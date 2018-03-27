@@ -34,6 +34,10 @@ menu:
 ```
 4. 重新清理编译生成即可
 
+### 添加`Categories`支持
+
+
+
 ## 快速入门(使用`github`,`gitpage`搭建自动更新博客)
 
 1. `github`上创建`gitpage`的仓库,格式:`用户名.github.io`
@@ -81,9 +85,9 @@ after_script:
   - cd ./public
   - git init
   - echo "# Pan's Blog" >> README.md
-  - echo "![travis](https://travis-ci.org/caticat/caticat.github.io.svg?branch=source)" >> README.md
-  - git config user.name "caticat"
-  - git config user.email "catifish@163.com"
+  - echo "![travis](https://travis-ci.org/a/a.github.io.svg?branch=source)" >> README.md
+  - git config user.name "a"
+  - git config user.email "a@b.com"
   - git add .
   - git commit -m "Update docs"
   - git push --force --quiet "https://${GH_TOKEN}@${GH_REF}" master:master
@@ -94,7 +98,7 @@ branches:
 
 env:
   global:
-    - GH_REF: github.com/caticat/caticat.github.io.git
+    - GH_REF: github.com/a/a.github.io.git
 ```
 6. 推送到`github`上:`git push`
 7. 等`travis`运行结束,即可访问`https://用户名.github.io`来看网页了
