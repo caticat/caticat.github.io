@@ -4,6 +4,7 @@ date: 2018-03-27 16:56:21
 tags: 
   - hexo
   - web
+categories: hexo
 ---
 
 ## 功能
