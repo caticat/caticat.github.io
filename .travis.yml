@@ -11,7 +11,7 @@ script:
 after_script:
   - cd ./public
   - git init
-  - echo "# Pan's Blog\n" >> README.md
+  - echo "# Pan's Blog" >> README.md
   - echo "![travis](https://travis-ci.org/caticat/caticat.github.io.svg?branch=source)" >> README.md
   - git config user.name "caticat"
   - git config user.email "catifish@163.com"
