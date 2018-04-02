@@ -1,6 +1,6 @@
 ---
 title: 初识redis(1)
-date: 2018-03-27 17:37:41
+# date: 2018-03-27 17:37:41
 tags:
   - redis
   - database
