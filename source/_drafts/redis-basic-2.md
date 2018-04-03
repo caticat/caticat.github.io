@@ -33,7 +33,8 @@ categories:
 每种数据结构都有自己的底层内部编码实现,而且是多种实现
 `object encoding $key`命令可以查询内部编码
 
-数据结构
+### 数据结构
+
 - 字符串
 - 哈希
 - 列表
@@ -41,3 +42,13 @@ categories:
 - 有序集合
 
 {% asset_img basic_type.jpg basic type %}
+
+### 内部编码
+
+{% asset_img basic_type_encoding.jpg basic type encoding %}
+
+优点:
+- 无需改动外部数据结构和命令,即可将代码替换成更合适的数据结构
+- 不同的结构在不同情况下有不同的优势
+
+
