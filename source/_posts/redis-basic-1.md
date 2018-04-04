@@ -31,6 +31,8 @@ categories:
 	- `Redis Sentinel`可以保证能够`Redis`节点的故障发现和故障自动转移
 	- `Redis Cluster`是`Redis`真正的分布式实现,提供了高可用,读写和容量的扩展性
 
+<!-- more -->
+
 ## 使用场景
 
 ### 适合

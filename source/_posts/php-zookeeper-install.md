@@ -20,6 +20,8 @@ extension=zookeeper.so
 ```
 3. 重启php服务
 
+<!-- more -->
+
 ## 说明
 
 `zookeeper.so`库是根据`zookeeper-3.4.10`和php扩展`zookeeper-0.4.0`编译生成
