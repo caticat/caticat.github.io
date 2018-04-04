@@ -1,5 +1,5 @@
 ---
-title: 2. `Redis`API的理解和使用
+title: 2. Redis API的理解和使用
 tags:
   - redis
   - database
