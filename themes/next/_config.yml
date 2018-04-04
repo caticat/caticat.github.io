@@ -618,12 +618,12 @@ rating:
 # You can visit https://leancloud.cn get AppID and AppKey.
 leancloud_visitors:
   enable: true
-  app_id: xp6F96JiiExo7xJOPbUP19CE-gzGzoHsz #<app_id>
-  app_key: hDTW8qKzKccWeF7THqIeuCzO #<app_key>
+  app_id: xp6F96JiiExo7xJOPbUP19CE-gzGzoHsz
+  app_key: hDTW8qKzKccWeF7THqIeuCzO
   # Dependencies: https://github.com/theme-next/hexo-leancloud-counter-security
   # If you don't care about security in lc counter and just want to use it directly
   # (without hexo-leancloud-counter-security plugin), set the `security` to `false`.
-  security: true
+  security: false
   betterPerformance: false
 
 # Another tool to show number of visitors to each article.
