@@ -3,6 +3,7 @@ node_js: stable
 
 install:
   - npm install hexo --save
+  - npm install hexo-leancloud-counter-security --save
   #- npm install -g hexo-cli
 
 script:
