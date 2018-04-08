@@ -1,5 +1,5 @@
 ---
-title: 5. Redis API的理解和使用-集合
+title: 6. Redis API的理解和使用-集合
 tags:
   - redis
   - database
