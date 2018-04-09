@@ -814,12 +814,12 @@ pace_theme: pace-theme-minimal
 
 # Canvas-nest
 # Dependencies: https://github.com/theme-next/theme-next-canvas-nest
-canvas_nest: true
+canvas_nest: false
 
 # JavaScript 3D library.
 # Dependencies: https://github.com/theme-next/theme-next-three
 # three_waves
-three_waves: false
+three_waves: true
 # canvas_lines
 canvas_lines: false
 # canvas_sphere
