@@ -1,5 +1,5 @@
 ---
-title: 5. Redis 扩展功能-Pipeline
+title: 6. Redis 扩展功能-事务
 tags:
   - redis
   - database
