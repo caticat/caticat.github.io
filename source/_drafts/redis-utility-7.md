@@ -1,5 +1,5 @@
 ---
-title: 6. Redis 扩展功能-事务
+title: 7. Redis 扩展功能-Lua
 tags:
   - redis
   - database
