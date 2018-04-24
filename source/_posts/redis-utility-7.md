@@ -9,10 +9,7 @@ categories:
 date: 2018-04-24 11:33:17
 ---
 
-
 ## 在Redis中使用Lua
-
-<!-- more -->
 
 - 外部
 	1. `redis-cli --eval $脚本文件名`
@@ -21,29 +18,30 @@ date: 2018-04-24 11:33:17
 	1. `eval $脚本内容 $参数个数 $参数列表...`
 		`eval 'return "hello"..KEYS[1]..KEYS[2]' 2 world haha`
 		`KEYS`数组下标从1开始
+<!-- more -->
 	2. `evalsha $脚本sha1值 $参数个数 $参数列表...`
-```bash
-redis-cli -p 6666 script load "$(cat a.lua)" # 获取到xxx.lua脚本的sha1值
-```
-```redis
-evalsha 4719dc708ac83e3d7c7252804b4b166e06519c61 2 world1 world2
-```
+	```bash
+	redis-cli -p 6666 script load "$(cat a.lua)" # 获取到xxx.lua脚本的sha1值
+	```
+	```redis
+	evalsha 4719dc708ac83e3d7c7252804b4b166e06519c61 2 world1 world2
+	```
 **使用`script load`可以将脚本内容加载到数据库内存中,后面通过返回的sha1值来调用执行脚本即可**
 
 ## Lua调用Redis
 
 - `redis.call`可以调用Redis的命令,执行失败报错,停止继续执行
-```lua
-redis.call("set", "hello", "world")
-return redis.call("get", "hello")
-```
-```bash
-redis-cli -p 6666 --eval a.lua
-redis-cli -p 6666 script load "$(cat a.lua)"
-```
-```redis
-evalsha 86370eb220da770aec7bc7aeaacd7acefc3a8437 0
-```
+	```lua
+	redis.call("set", "hello", "world")
+	return redis.call("get", "hello")
+	```
+	```bash
+	redis-cli -p 6666 --eval a.lua
+	redis-cli -p 6666 script load "$(cat a.lua)"
+	```
+	```redis
+	evalsha 86370eb220da770aec7bc7aeaacd7acefc3a8437 0
+	```
 - `redis.pcall`也可以调用Redis命令,执行失败会忽略错误继续执行脚本
 
 ## 使用Lua的好处

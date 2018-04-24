@@ -1,5 +1,5 @@
 ---
-title: 8. Redis 扩展功能-Bitmaps
+title: 9. Redis 扩展功能-HyperLogLog
 tags:
   - redis
   - database
