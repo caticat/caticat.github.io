@@ -1,5 +1,5 @@
 ---
-title: 9. Redis 扩展功能-HyperLogLog
+title: 10. Redis 扩展功能-发布订阅
 tags:
   - redis
   - database
