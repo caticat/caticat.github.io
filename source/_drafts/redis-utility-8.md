@@ -1,5 +1,5 @@
 ---
-title: 7. Redis 扩展功能-Lua
+title: 8. Redis 扩展功能-Bitmaps
 tags:
   - redis
   - database
