@@ -11,7 +11,7 @@ date: 2018-04-25 16:37:45
 
 在所有申请的指定长度的内存前加了一个`sizeof(size_t)`的长度
 用于记录实际申请的内存长度,
-方便统计内存使用占用
+方便统计内存使用占用和内存使用状态分析
 
 ## 相关文件
 
@@ -35,13 +35,18 @@ date: 2018-04-25 16:37:45
 		进程独享内存,且其内容已经被修改
 - 内存碎片
 	- 内部碎片
-		已经被分配给其他进程的,不能被操作系统使用的内存
+		已经被分配给程序进程的,不能被操作系统使用的内存
 	- 外部碎片
-		没有非配个其他进程,但是因为连续空间过小导致无法使用
+		没有分配给程序进程,但是因为连续空间过小导致无法使用的内存
 - `/proc/self/*`与`/proc/$pid/`
 	系统使用`self`来代替`$pid`,实际上两个目录一样的.不同的进程调用`self`是对应的文件夹连接就是自己的`$pid`文件夹连接
 - 共享内存
 	在Linux中主要是`.so`动态库文件,还有一些其他内容
+- 内存对齐
+    系统版本与CPU同时决定对齐的位数
+    x86是4,x64是8
+    gcc中申请的内存默认都是要对齐的,不足位数的需要凑齐为对齐位数的整数倍
+    (可以使用`__attribute__ ((__packed__))`来强制不对齐)
 
 ## 函数分析
 
@@ -98,9 +103,9 @@ static void zmalloc_default_oom(size_t size) {
 ```c
 #define update_zmalloc_stat_alloc(__n) do { \
     size_t _n = (__n); \
-    if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \ //这里是保证used_memory记录的申请的内存的尺寸是8的倍数(malloc本身已经保证申请的内存是8位对齐了)(另外在gcc中64位系统的size_t就是long unsigned int)
+    if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \ // 这里是保证used_memory记录的申请的内存的尺寸是8的倍数(malloc本身已经保证申请的内存是8位对齐了)(另外在gcc中64位系统的size_t就是long unsigned int)
     if (zmalloc_thread_safe) { \ // 是否启用线程安全功能
-        update_zmalloc_stat_add(_n); \ // 已线程安全的方式增加used_memory
+        update_zmalloc_stat_add(_n); \ // 以线程安全的方式增加used_memory
     } else { \
         used_memory += _n; \ // 不考虑线程安全直接增加used_memory
     } \
@@ -355,7 +360,7 @@ float zmalloc_get_fragmentation_ratio(size_t rss) {
 
 #### 功能
 
-通过系统信息截取到当前Redis使用的RSS(Resident Set Size)(进程实际锁驻留在内存的空间大小,不包括交换区数据(swap))值
+通过系统信息截取到当前Redis使用的RSS(Resident Set Size)(进程实际所驻留在内存的空间大小,不包括交换区数据(swap))值
 
 #### 源码
 
