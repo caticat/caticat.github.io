@@ -8,13 +8,6 @@ categories:
   - source
 date: 2018-05-07 15:16:12
 ---
-
-## 相关文件
-
-- server.h
-- t_zset.c
-
-<!-- more -->
 跳表
 就是分层级的有序链表
 查询数据快,结构简单
@@ -26,6 +19,12 @@ forward的处理是遍历循环处理
 backward的处理是一个if判断
 是因为forward是层级相关的,所有层级都要处理
 而backward只是一个值,backward本身只记录0级的数据
+
+## 相关文件
+
+- server.h
+- t_zset.c
+<!-- more -->
 
 ## 相关概念
 
