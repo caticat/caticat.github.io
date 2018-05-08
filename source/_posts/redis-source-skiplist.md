@@ -312,7 +312,7 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
     }
     /* We may have multiple elements with the same score, what we need
      * is to find the element with both the right score and object. */
-    x = x->level[0].forward; // 获取到带删除节点本身
+    x = x->level[0].forward; // 获取到待删除节点本身
     if (x && score == x->score && equalStringObjects(x->obj,obj)) { // 保证是==而不是>
         zslDeleteNode(zsl, x, update); // 删除节点的跳表关系
         zslFreeNode(x); // 释放内存
