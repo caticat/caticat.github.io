@@ -79,7 +79,7 @@ typedef struct zlentry { // ziplist的单个entry元素结构体
     unsigned int lensize, len; // 当前元素的长度编码的长度,当前元素的长度
     unsigned int headersize; // prevrawlensize+lensize的值(就是从元素开始到该元素数据记录开始的字节数)(长度值是编码的数据)
     unsigned char encoding; // 当前元素所使用的编码类型
-    unsigned char *p; // 数据
+    unsigned char *p; // 数据(是头指针,不是数据指针,就是从前一个元素的长度那里开始的指针)
 } zlentry;
 ```
 
