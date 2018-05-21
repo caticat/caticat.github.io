@@ -256,9 +256,7 @@ void quicklistRelease(quicklist *quicklist) {
 }
 ```
 
-### `REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist,
-                                        quicklistNode *old_node,
-                                        quicklistNode *new_node, int after);`
+### `REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist, quicklistNode *old_node, quicklistNode *new_node, int after);`
 
 #### 功能
 
@@ -307,8 +305,7 @@ REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist,
 }
 ```
 
-### `REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node,
-                                           const int fill, const size_t sz);`
+### `REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node, const int fill, const size_t sz);`
 
 #### 功能
 
@@ -419,8 +416,7 @@ int quicklistPushTail(quicklist *quicklist, void *value, size_t sz) {
 }
 ```
 
-### `REDIS_STATIC void __quicklistDelNode(quicklist *quicklist,
-                                     quicklistNode *node);`
+### `REDIS_STATIC void __quicklistDelNode(quicklist *quicklist, quicklistNode *node);`
 
 #### 功能
 
@@ -456,8 +452,7 @@ REDIS_STATIC void __quicklistDelNode(quicklist *quicklist,
 }
 ```
 
-### `REDIS_STATIC int quicklistDelIndex(quicklist *quicklist, quicklistNode *node,
-                                   unsigned char **p);`
+### `REDIS_STATIC int quicklistDelIndex(quicklist *quicklist, quicklistNode *node, unsigned char **p);`
 
 #### 功能
 
@@ -535,8 +530,7 @@ void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry) {
 }
 ```
 
-### `REDIS_STATIC void _quicklistInsert(quicklist *quicklist, quicklistEntry *entry,
-                                   void *value, const size_t sz, int after);`
+### `REDIS_STATIC void _quicklistInsert(quicklist *quicklist, quicklistEntry *entry, void *value, const size_t sz, int after);`
 
 #### 功能
 
@@ -693,9 +687,7 @@ quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction) {
 }
 ```
 
-### `quicklistIter *quicklistGetIteratorAtIdx(const quicklist *quicklist,
-                                         const int direction,
-                                         const long long idx);`
+### `quicklistIter *quicklistGetIteratorAtIdx(const quicklist *quicklist, const int direction, const long long idx);`
 
 #### 功能
 
@@ -864,9 +856,7 @@ quicklist *quicklistDup(quicklist *orig) {
 }
 ```
 
-### `int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
-                       unsigned int *sz, long long *sval,
-                       void *(*saver)(unsigned char *data, unsigned int sz));`
+### `int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *sval, void *(*saver)(unsigned char *data, unsigned int sz));`
 
 #### 功能
 
@@ -932,8 +922,7 @@ int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
 }
 ```
 
-### `int quicklistPop(quicklist *quicklist, int where, unsigned char **data,
-                 unsigned int *sz, long long *slong);`
+### `int quicklistPop(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *slong);`
 
 #### 功能
 
