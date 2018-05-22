@@ -27,6 +27,7 @@ Redis这里的LRU算法是近似算法
 ## Redis中LRU处理步骤
 
 **这里是摘抄**
+[原文](http://blog.chinaunix.net/uid-20708886-id-5753422.html)
 
 1. 获取redis server当前已经使用的内存mem_reported。
 2. 如果mem_reported < server.maxmemory ,则返回ok。否则mem_used=mem_reported，进入步骤3。
@@ -82,6 +83,18 @@ Redis这里的LRU算法是近似算法
 ## LRU标记代码
 
 ```c
+/* The actual Redis Object */
+#define LRU_BITS 24
+#define LRU_CLOCK_MAX ((1<<LRU_BITS)-1) /* Max value of obj->lru */
+#define LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
+typedef struct redisObject {
+    unsigned type:4;
+    unsigned encoding:4;
+    unsigned lru:LRU_BITS; /* lru time (relative to server.lruclock) */
+    int refcount;
+    void *ptr;
+} robj;
+
 // 创建对象,所有对象robj都有lru值
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
@@ -100,6 +113,30 @@ robj *createObject(int type, void *ptr) {
 
 unsigned int getLRUClock(void) {
     return (mstime()/LRU_CLOCK_RESOLUTION) & LRU_CLOCK_MAX;
+}
+
+// 查找键会更新对象的LRU
+/* Low level key lookup API, not actually called directly from commands
+ * implementations that should instead rely on lookupKeyRead(),
+ * lookupKeyWrite() and lookupKeyReadWithFlags(). */
+robj *lookupKey(redisDb *db, robj *key, int flags) {
+    dictEntry *de = dictFind(db->dict,key->ptr);
+    if (de) {
+        robj *val = dictGetVal(de);
+
+        /* Update the access time for the ageing algorithm.
+         * Don't do it if we have a saving child, as this will trigger
+         * a copy on write madness. */
+        if (server.rdb_child_pid == -1 &&
+            server.aof_child_pid == -1 &&
+            !(flags & LOOKUP_NOTOUCH))
+        {
+            val->lru = LRU_CLOCK();
+        }
+        return val;
+    } else {
+        return NULL;
+    }
 }
 ```
 
