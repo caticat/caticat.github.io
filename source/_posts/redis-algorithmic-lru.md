@@ -8,6 +8,7 @@ date: 2018-05-22 15:02:11
 ---
 
 LRU(Least Recently Used)最近最少使用统计算法
+
 当Redis使用的内存超出设置的可以最大使用内存后
 Redis会通过LRU的配置来回收内存
 Redis对象的lru是用1<<24 - 1长度的字节表示的
@@ -20,11 +21,24 @@ Redis这里的LRU算法是近似算法
 但肯定不是最坏的
 <!-- more -->
 
+## 经典LRU算法
+
+通过dict和linkedlist两个数据结构处理
+dict记录实际数据
+linkedlist记录元素的变动状态
+最老的数据排在链表前面
+当需要删除时
+只需要按照链表顺序删除即可
+
 ## LRU基本流程
 
 {% asset_img lru_describe.png lru describe %}
 
 ## Redis中LRU处理步骤
+
+Redis的算法省去了链表的记录
+而是每个对象记录了一个时间戳
+通过不精确的采样获取到可删除的元素进行删除
 
 **这里是摘抄**
 [原文](http://blog.chinaunix.net/uid-20708886-id-5753422.html)
