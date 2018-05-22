@@ -24,6 +24,21 @@ Redis这里的LRU算法是近似算法
 
 {% asset_img lru_describe.png lru describe %}
 
+## Redis中LRU处理步骤
+
+**这里是摘抄**
+
+1. 获取redis server当前已经使用的内存mem_reported。
+2. 如果mem_reported < server.maxmemory ,则返回ok。否则mem_used=mem_reported，进入步骤3。
+3. 遍历该redis的所slaves，mem_used减去所有slave占用的ClientOutputBuffer。
+4. 如果配置了AOF，mem_used减去AOF占用的空间。sdslen(server.aof_buf)+aofRewriteBufferSize()。
+5. 如果mem_used < server.maxmemory,返回ok。否则进入步骤6。
+6. 如果内存策略配置为noeviction，返回错误。否则进入7。 
+7. 如果是LRU策略,如果是VOLATILE的LRU，则每次从可失效的数据集中，每次随机采样maxmemory_samples(默认为5)个key,从中选取idletime最大的key进行淘汰。否则，如果是ALLKEYS_LRU则从全局数据中进行采样，每次随机采样maxmemory_samples(默认为5)个key，并从中选择idletime最大的key进行淘汰。
+8. 如果释放内存之后，还是超过了server.maxmemory,则继续淘汰，只到释放后剩下的内存小于server.maxmemory为止。
+    被动淘汰 – 每次访问相关的key，如果发现key过期，直接释放掉该key相关的内存:
+    每次访问key，都会调用expireIfNeeded来判断key是否过期，如果过期，则释放掉，并返回null，否则返回key的值。
+
 ## Redis中LRU配置
 
 ```conf
