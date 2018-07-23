@@ -46,6 +46,44 @@ slowlog-max-len 128
 - `slowlog len`,显示当前公有多少条慢日志
 - `slowlog reset`,重置所有慢日志,清除记录
 
+### 例子
+
+```redis
+127.0.0.1:9898> slowlog len
+(integer) 3
+127.0.0.1:9898> slowlog get 1
+1) 1) (integer) 2
+   2) (integer) 1532317655
+   3) (integer) 1000648
+   4) 1) "SET"
+      2) "c"
+      3) "ccc"
+127.0.0.1:9898> slowlog get
+1) 1) (integer) 2
+   2) (integer) 1532317655
+   3) (integer) 1000648
+   4) 1) "SET"
+      2) "c"
+      3) "ccc"
+2) 1) (integer) 1
+   2) (integer) 1532317654
+   3) (integer) 1001048
+   4) 1) "SET"
+      2) "b"
+      3) "bbb"
+3) 1) (integer) 0
+   2) (integer) 1532317653
+   3) (integer) 1000425
+   4) 1) "SET"
+      2) "a"
+      3) "aaa"
+127.0.0.1:9898> slowlog reset
+OK
+127.0.0.1:9898> slowlog len
+(integer) 0
+
+```
+
 ## 使用慢日志的思路
 
 通过客户端,定时想数据库请求慢日志信息,
