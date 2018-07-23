@@ -1,15 +1,15 @@
 ---
-title: REDIS配置分析
+title: REDISLV配置分析
 tags:
   - redis
+  - redislv
   - configuration
 categories:
   - redis
 date: 2018-07-19 20:31:07
 ---
 
-
-REDIS的配置文件解析redis-config.md
+REDISLV的配置文件解析redis-config.md
 
 ## 使用配置文件的方法
 
@@ -321,8 +321,9 @@ loglevel notice
 
 日志文件(完整地址:路径+文件名)
 为空表示使用标准输出
-	- 前台运行,控制台可以直接看到
-	- 后台运行,直接输出到`/dev/null`中,不会有日志存在
+
+- 前台运行,控制台可以直接看到
+- 后台运行,直接输出到`/dev/null`中,不会有日志存在
 
 #### 例子
 
@@ -433,7 +434,7 @@ databases 16
 
 - 条件
 	- <=指定时间
-	- >=指定次数
+	- \>=指定次数
 - 结果
 	- 保存数据到硬盘
 
@@ -1304,6 +1305,8 @@ leveldb yes
 #### 说明
 
 leveldb数据的存放目录
+这个目录是在上面的`dir`配置的基础上拼装出来的,
+并不是从根目录开始计算
 
 #### 例子
 
