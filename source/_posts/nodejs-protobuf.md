@@ -28,7 +28,7 @@ NodeJS读写ProtoBuf的例子
 
 test123.proto
 
-```proto
+```protobuf
 syntax = "proto2";
 
 package test123;
@@ -57,9 +57,9 @@ message Data
 导出代码文件方法:
 
 - js
-`/D/pan/lib/protoc-3.5.0-win32/bin/protoc3 -I/D/pan/test_javascript/test/proto/src --js_out=import_style=commonjs,binary:D:/pan/test_javascript/test/proto/tar /D/pan/test_javascript/test/proto/src/test123.proto`
+	`/D/pan/lib/protoc-3.5.0-win32/bin/protoc3 -I/D/pan/test_javascript/test/proto/src --js_out=import_style=commonjs,binary:D:/pan/test_javascript/test/proto/tar /D/pan/test_javascript/test/proto/src/test123.proto`
 - go
-`/D/pan/lib/protoc-3.5.0-win32/bin/protoc3 -I/D/pan/test_javascript/test/proto/src --go_out=D:/pan/test_go/readjsproto/proto /D/pan/test_javascript/test/proto/src/test123.proto`
+	`/D/pan/lib/protoc-3.5.0-win32/bin/protoc3 -I/D/pan/test_javascript/test/proto/src --go_out=D:/pan/test_go/readjsproto/proto /D/pan/test_javascript/test/proto/src/test123.proto`
 
 ## js
 
