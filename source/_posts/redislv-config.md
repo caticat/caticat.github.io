@@ -45,6 +45,7 @@ port 6379
 使用bind参数开启网络监听绑定
 只有被bind的地址的主机可以访问数据库
 可以同时bind多个ip(根据代码内宏定义,最多16个ip)
+**bind所绑定的ip地址都是本机ip地址,具体是指这台主机有多个网卡,这些网卡对应的ip地址,而不是远程访问的ip地址**
 
 ```c
 #define CONFIG_BINDADDR_MAX 16

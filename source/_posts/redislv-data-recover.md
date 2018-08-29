@@ -30,6 +30,9 @@ port 9898
  
 # 客户端ip限制
 bind 127.0.0.1
+
+# 密码限制
+requirepass 192168119145
  
 # 不保存rdb文件
 save ""
