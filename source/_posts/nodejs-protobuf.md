@@ -54,6 +54,13 @@ message Data
 ```
 <!-- more -->
 
+导出代码文件方法:
+
+- js
+`/D/pan/lib/protoc-3.5.0-win32/bin/protoc3 -I/D/pan/test_javascript/test/proto/src --js_out=import_style=commonjs,binary:D:/pan/test_javascript/test/proto/tar /D/pan/test_javascript/test/proto/src/test123.proto`
+- go
+`/D/pan/lib/protoc-3.5.0-win32/bin/protoc3 -I/D/pan/test_javascript/test/proto/src --go_out=D:/pan/test_go/readjsproto/proto /D/pan/test_javascript/test/proto/src/test123.proto`
+
 ## js
 
 测试用js代码,
@@ -108,8 +115,8 @@ fs.writeFileSync("./data.txt", bytes);
 
 // redis的用法
 var redis = require("redis");
-var client = redis.createClient("9898", "192.168.128.46");
-client.auth("192168119145");
+var client = redis.createClient("9999", "127.0.0.1");
+client.auth("password");
 client.on("error",function(error){
     console.log(error);
 });
@@ -160,13 +167,13 @@ import (
 // /D/pan/lib/protoc-3.5.0-win32/bin/protoc3 -I/D/pan/test_javascript/test/proto/src --go_out=D:/pan/test_go/readjsproto/proto /D/pan/test_javascript/test/proto/src/test123.proto
 
 func main() {
-	r, err := redis.Dial("tcp", "192.168.128.46:9898")
+	r, err := redis.Dial("tcp", "127.0.0.1:9999")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	rep := r.Cmd("AUTH", "192168119145");
+	rep := r.Cmd("AUTH", "password");
 	//fmt.Println(rep)
 
 	rep = r.Cmd("GET", "proto:data")
