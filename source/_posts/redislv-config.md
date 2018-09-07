@@ -340,6 +340,7 @@ logfile "redis.log"
 是否使用系统日志记录
 默认是关闭
 和上面配置的logfile不冲突,同时开启会记录双份日志
+日志记录位置:`/var/log/messages`
 
 #### 例子
 
@@ -352,8 +353,7 @@ syslog-enabled yes
 #### 说明
 
 系统日志的标识名称
-在`/var/log/message`日志文件中的每行日志都有这个文字作为日志来源的标识
-TODO:PAN 具体功能有待测试
+在`/var/log/messages`日志文件中的每行日志都有这个文字作为日志来源的标识
 
 #### 例子
 
