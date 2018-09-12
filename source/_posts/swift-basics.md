@@ -2,7 +2,9 @@
 title: Swift基础
 tags: swift
 categories: swift
+date: 2018-09-12 20:54:58
 ---
+
 
 ## 变量/常量
 
@@ -334,6 +336,7 @@ let forcedString: String = possibleString! // requires an exclamation mark
 let assumedString: String! = "An implicitly unwrapped optional string."
 let implicitString: String = assumedString // no need for an exclamation mark
 ```
+	- 使用可以和可选类型一样
 ```swift
 let possibleString: String? = nil
 //let forcedString: String = possibleString! // requires an exclamation mark // 运行时错误
@@ -346,3 +349,82 @@ if let a = assumedString {
         print(2)
 }
 ```
+
+## 错误处理
+
+- 函数可以抛出异常
+```swift
+func canThrowAnError() throws {
+	// this function may or may not throw an error
+}
+```
+- 异常会在被捕获前不断向上抛出
+```swift
+do {
+    try canThrowAnError()
+    // no error was thrown
+} catch {
+    // an error was thrown
+}
+```
+- 可以有多个catch
+```swift
+func makeASandwich() throws {
+    // ...
+}
+
+do {
+    try makeASandwich()
+    eatASandwich()
+} catch SandwichError.outOfCleanDishes {
+    washDishes()
+} catch SandwichError.missingIngredients(let ingredients) {
+    buyGroceries(ingredients)
+}
+```
+
+## 断言和预判断(assertions & preconditions)
+
+- 会产生`core`文件
+- 和错误处理不同,断言和预判断报错,都表明当前程序的运行状态是错误的,是没有办法做错误处理的
+- 更容易找到错误的问题
+- 断言和预判断的不同
+	- 断言只在debug编译模式中有效(所以使用很多断言并不会有性能影响)
+	- 预判断在debug和production版本都有效
+
+### 断言
+
+- 函数原型:`assert(_:_:file:line:)`
+	- 参数:
+		- `Bool`,触发条件,`true`不会触发,`false`触发断言
+		- `String`,说明字符串,当触发断言时显示的字符串说明
+```swift
+let age = -3
+assert(age >= 0, "A person's age can't be less than zero.")
+// This assertion fails because -3 is not >= 0.
+```
+- 当正常条件已经在其他语句中判断过了的时候,可以直接使用:`assertionFailure(_:file:line:)`来进行断言报错
+```swift
+if age > 10 {
+    print("You can ride the roller-coaster or the ferris wheel.")
+} else if age > 0 {
+    print("You can ride the ferris wheel.")
+} else {
+    assertionFailure("A person's age can't be less than zero.")
+}
+```
+
+### 强制的预判断
+
+- 当条件可能为假,但是要程序继续运行下去必须为真的情况下使用
+- 函数原型:`precondition(_:_:file:line:)`
+	- 参数:同`assert`
+```swift
+let index = -1
+precondition(index > 0, "Index must be greater than zero.")
+print(index)
+```
+- 同理,还有`preconditionFailure(_:file:line:)`来直接触发`core`dump
+- **当编译选项开启"unchecked"选项时,编译器会忽略所有的preconditions内容,对代码进行优化**,导致preconditions无效,而`fatalError(_:file:line:)`函数无论是否有该编译选项,都会终止程序的继续执行
+- 可以使用`fatalError("Unimplemented")`这样的代码表示程序功能还没有实现,用于记录功能的实现程度
+
