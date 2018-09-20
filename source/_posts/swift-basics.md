@@ -5,6 +5,7 @@ categories: swift
 date: 2018-09-12 20:54:58
 ---
 
+**本文是根据官方文档整理出来的阅读笔记,[原文地址](https://docs.swift.org/swift-book/LanguageGuide/TheBasics.html)**
 
 ## 变量/常量
 
