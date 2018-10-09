@@ -30,7 +30,7 @@ date: 2018-10-09 20:29:23
 ### 命令
 
 - `git reset HEAD 文件名`,撤销暂存指定文件
-- `git reset HEAD .`,侧小所有暂存文件
+- `git reset HEAD .`,撤销所有暂存文件
 
 ## 回退已经提交的代码
 
