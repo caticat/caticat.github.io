@@ -643,3 +643,156 @@ m.test()
 
 ## 继承
 
+### 基础
+
+```swift
+class A {
+    var a = 1
+    var b : String {
+        return "a=\(a)"
+    }
+}
+class B : A {
+    var c = 2
+}
+var b = B()
+print(b.b, b.c)
+b.a=10
+b.c=20
+print(b.b, b.c)
+```
+
+### 覆盖/调用基类方法
+
+```swift
+class A {
+	func a() {
+		print("func a")
+	}
+}
+class B : A {
+    override func a() {
+		super.a()
+		print("func B::a")
+	}
+}
+var b = B()
+b.a()
+```
+
+### 覆盖/调用基类属性
+
+```swift
+class A {
+    var a = 1
+    var b : String {
+        return "a = \(a)"
+    }
+}
+class B : A {
+    override var a : Int {
+        didSet {
+            print("set a")
+        }
+    }
+    override var b : String {
+        return "B::\(super.b)"
+    }
+}
+var b = B()
+print(b.b)
+b.a = 100
+```
+
+### 阻止基类属性被重写
+
+在属性前添加`final`关键字,
+代码中尝试重写该内容会报错
+
+## 初始化
+
+**所有存储属性必须有初值**
+要么在定义时设置
+要么在构造函数中设置
+
+### 定义时赋值
+
+```swift
+class A {
+    var a : Int = 9
+}
+var a = A()
+print(a.a) // 9
+```
+
+### 构造函数
+
+```swift
+class A {
+    var a : Int = 9
+    init() {
+        a = 10
+    }
+}
+var a = A()
+print(a.a) // 10
+```
+
+#### 自定义构造函数
+
+- 类中可以有多个构造函数
+- 参数名不同
+- 参数类型不同
+
+```swift
+class A {
+    var a = 1
+    var b = 2
+    init(a : Int) {
+        self.a = a
+    }
+    init(b : Int) {
+        self.b = b
+    }
+    init (a : Int, b : Int) {
+        self.a = a
+        self.b = b
+    }
+}
+var a = A(a:10)
+print(a.a, a.b) // 10 2
+a = A(b:10)
+print(a.a, a.b) // 1 10
+a = A(a:10, b:10)
+print(a.a, a.b) // 10 10
+```
+
+#### 覆盖父类构造函数
+
+- 在设置自己的属性前,必须调用基类构造函数
+
+```swift
+class A {
+    var a = 0
+    var str : String {
+        return "a=\(a)"
+    }
+}
+
+var a = A()
+print(a.str)
+a.a = 20
+print(a.str)
+
+class B : A {
+    override init() {
+        super.init()
+        a = 10
+    }
+}
+
+var b = B()
+print(b.str)
+b.a = 20
+print(b.str)
+```
