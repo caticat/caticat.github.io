@@ -951,3 +951,13 @@ images: images
 
 # Theme version
 version: 6.1.0
+
+# gitalk settings
+gitalk:
+  enable: true #用来做启用判断可以不用
+  owner: caticat #Github 用户名,
+  repo: caticat.github.io #储存评论issue的github仓库名
+  admin: caticat #Github 用户名,
+  clientID: e8443a1845703a67513c #`Github Application clientID`
+  clientSecret: 0b0efab598ef8cc3657c3853b3c0189da301fb99 #`Github Application clientSecret`
+  distractionFreeMode: true

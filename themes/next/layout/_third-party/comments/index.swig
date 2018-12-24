@@ -5,3 +5,4 @@
 {% include 'changyan.swig' %}
 {% include 'gitment.swig' %}
 {% include 'valine.swig' %}
+{% include 'gitalk.swig' %}
