@@ -955,9 +955,9 @@ version: 6.1.0
 # gitalk settings
 gitalk:
   enable: true
-  owner: caticat
-  repo: caticat.github.io.gitalk
-  admin: caticat
-  clientID: e8443a1845703a67513c
-  clientSecret: 0b0efab598ef8cc3657c3853b3c0189da301fb99
+  owner: 'caticat'
+  repo: 'caticat.github.io.gitalk'
+  admin: ['caticat']
+  clientID: 'e8443a1845703a67513c'
+  clientSecret: '0b0efab598ef8cc3657c3853b3c0189da301fb99'
   distractionFreeMode: false
