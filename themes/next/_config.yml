@@ -960,4 +960,4 @@ gitalk:
   admin: caticat #Github 用户名,
   clientID: e8443a1845703a67513c #`Github Application clientID`
   clientSecret: 0b0efab598ef8cc3657c3853b3c0189da301fb99 #`Github Application clientSecret`
-  distractionFreeMode: true
+  #distractionFreeMode: true
