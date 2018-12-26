@@ -19,7 +19,8 @@ after_script:
   - git init
   - echo "# Pan's Blog" >> README.md
   - echo "![travis](https://travis-ci.org/caticat/caticat.github.io.svg?branch=source)" >> README.md
-  - cp ../misc/baidu_verify_c5pg0Ve7oy.html .
+  - cp ../search_auth/baidu_verify_c5pg0Ve7oy.html .
+  - cp ../search_auth/google4b09503098e8cf15.html .
   - git config user.name "caticat"
   - git config user.email "catifish@163.com"
   - git add .
