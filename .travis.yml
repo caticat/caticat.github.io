@@ -6,6 +6,8 @@ install:
   - npm install hexo-leancloud-counter-security --save
   - npm install gitalk --save
   - npm install hexo-generator-searchdb --save
+  - npm install hexo-generator-sitemap --save
+  - npm install hexo-generator-baidu-sitemap --save
   #- npm install -g hexo-cli
 
 script:
