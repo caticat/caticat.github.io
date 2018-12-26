@@ -88,3 +88,10 @@ leancloud_counter_security:
   app_key: hDTW8qKzKccWeF7THqIeuCzO
   username: catifish@163.com
   password: pan
+
+# Search
+search:
+  path: search.xml
+  field: post
+  format: html
+  limit: 10000
