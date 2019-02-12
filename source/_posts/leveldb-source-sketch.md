@@ -1,11 +1,13 @@
 ---
 title: leveldb源码阅读简述
 tags:
-	- leveldb
-	- source
-	- database
+  - leveldb
+  - source
+  - database
 categories: leveldb
+date: 2019-02-12 16:12:36
 ---
+
 
 一直都觉得leveldb的源码不是很好读,
 一直都在拖延,
