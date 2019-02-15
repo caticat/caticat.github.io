@@ -70,3 +70,26 @@ inline Status& Status::operator=(Status&& rhs) noexcept {
 
 用于修饰一些可以提供默认函数体的函数(构造函数,复制构造函数,赋值函数等)
 显示的表明使用默认提供的函数
+
+## = delete
+
+类似`= default`,是禁用函数的意思.
+区别是可以对非默认函数使用
+
+```cpp
+#include <iostream>
+using namespace std;
+
+class Test {
+public:
+    void test(int a) {}
+    void test(float a) = delete;
+};
+
+int main(int argc, char *argv[]) {
+    Test data1;
+    data1.test(1); // OK
+    data1.test(0.5); // error: call to member function 'test' is ambiguous
+    return 0;
+}
+```
