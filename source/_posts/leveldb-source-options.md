@@ -77,8 +77,43 @@ Options::Options()
 - 行为属性
 	- `const Comparator* comparator;`,比较器,用于key排序用,必须保证这个排序和上次数据库存储时用的排序器是一致的,否则会出现取数据取不到等等各种问题.默认是按照字典规则排序的
 	- `bool create_if_missing;`,当数据库不存在时,是否创建数据库
+    - 详细说明:
+      - 在`DB::Open`->`DBImpl::Recover`中使用
+```cpp
+  if (!env_->FileExists(CurrentFileName(dbname_))) {
+    if (options_.create_if_missing) {
+      s = NewDB();
+      if (!s.ok()) {
+        return s;
+      }
+    } else {
+      return Status::InvalidArgument(
+          dbname_, "does not exist (create_if_missing is false)");
+    }
+  } else {
+    if (options_.error_if_exists) {
+      return Status::InvalidArgument(
+          dbname_, "exists (error_if_exists is true)");
+    }
+  }
+```
 	- `bool error_if_exists;`,设置为真时,当数据库已经存在则报错
+    - 调用位置和`create_if_missing`一致,上面有代码
 	- `bool paranoid_checks;`,是否开启完整检查(TODO:不是很清晰检查的内容),只要发现一点错误,整个数据库都不可读取
+    - 相关代码
+      - `ReadBlock`函数中
+```cpp
+  const char* data = contents.data();    // Pointer to where Read put the data
+  if (options.verify_checksums) { // 这里的verify_checksums就是通过paranoid_checks的值获得的
+    const uint32_t crc = crc32c::Unmask(DecodeFixed32(data + n + 1));
+    const uint32_t actual = crc32c::Value(data, n + 1);
+    if (actual != crc) {
+      delete[] buf;
+      s = Status::Corruption("block checksum mismatch");
+      return s;
+    }
+  }
+```
 	- `Env* env;`,环境(TODO:不理解作用)
 	- `Logger* info_log;`,日志系统,如果为空,则记录在数据库文件同目录下,否则记录在提供的日志系统中
 - 性能属性
