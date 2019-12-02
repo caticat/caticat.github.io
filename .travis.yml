@@ -13,6 +13,7 @@ install:
   #- npm install -g hexo-cli
 
 script:
+  - cp -f node_modules/live2d-widget-model-haru/package.json node_modules/live2d-widget-model-haru/01/package.json
   - hexo clean
   - hexo g
 
