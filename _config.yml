@@ -101,3 +101,16 @@ sitemap:
   path: sitemap.xml
 baidusitemap:
   path: baidusitemap.xml
+
+# live2d
+live2d:
+  enable: true
+  pluginModelPath: assets/
+  model:
+    use: live2d-widget-model-haru/01  #模板目录，在node_modules里
+  display:
+    position: right
+    width: 150 
+    height: 300
+  mobile:
+    show: false  #是否在手机进行显示
