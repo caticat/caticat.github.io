@@ -2,7 +2,7 @@
 title: REDISLV配置分析
 tags:
   - redis
-  - redislv
+  - redisLV
   - configuration
 categories:
   - redis
