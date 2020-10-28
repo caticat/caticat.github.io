@@ -10,6 +10,7 @@ install:
   - npm install hexo-generator-baidu-sitemap --save
   - npm install hexo-helper-live2d --save
   - npm install live2d-widget-model-haru --save
+  - npm install hexo-renderer-swig --save
   #- npm install -g hexo-cli
 
 script:
