@@ -1,0 +1,1465 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.1.0" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.1.0">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.1.0" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '',
+    scheme: 'Gemini',
+    version: '6.1.0',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="本质上就是char*字符串通过指定的格式排列的数据结构基本格式 12345&lt;zmlen&gt;	&#x2F;&#x2F; 当zmlen小于254时,记录的是键值对的个数,当等于254时,表示需要遍历整个zipmap才能指导具体的长度		&lt;len&gt;$key1&lt;len&gt;&lt;free&gt;$value1	&#x2F;&#x2F; 键长度-&gt;键-&gt;值长度-&amp;">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis 源码分析-压缩map">
+<meta property="og:url" content="https://caticat.github.io/2018/05/02/redis-source-zipmap/index.html">
+<meta property="og:site_name" content="杂记">
+<meta property="og:description" content="本质上就是char*字符串通过指定的格式排列的数据结构基本格式 12345&lt;zmlen&gt;	&#x2F;&#x2F; 当zmlen小于254时,记录的是键值对的个数,当等于254时,表示需要遍历整个zipmap才能指导具体的长度		&lt;len&gt;$key1&lt;len&gt;&lt;free&gt;$value1	&#x2F;&#x2F; 键长度-&gt;键-&gt;值长度-&amp;">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2018-05-02T14:22:52.000Z">
+<meta property="article:modified_time" content="2020-11-13T04:01:07.415Z">
+<meta property="article:author" content="Pan">
+<meta property="article:tag" content="database">
+<meta property="article:tag" content="redis">
+<meta name="twitter:card" content="summary">
+
+
+
+
+
+
+  <link rel="canonical" href="https://caticat.github.io/2018/05/02/redis-source-zipmap/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Redis 源码分析-压缩map | 杂记</title>
+  
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"> 
+
+<div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">杂记</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle">不乱</p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+          
+  <li class="menu-item menu-item-home">
+    <a href="/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />首页</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-tags">
+    <a href="/tags/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-tags"></i> <br />标签</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-categories">
+    <a href="/categories/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />分类</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-archives">
+    <a href="/archives/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />归档</a>
+</li>
+
+      
+
+      
+        <li class="menu-item menu-item-search">
+          
+            <a href="javascript:;" class="popup-trigger">
+          
+            
+              <i class="menu-item-icon fa fa-search fa-fw"></i> <br />搜索</a>
+        </li>
+      
+    </ul>
+  
+
+  
+
+  
+    <div class="site-search">
+      
+  <div class="popup search-popup local-search-popup">
+  <div class="local-search-header clearfix">
+    <span class="search-icon">
+      <i class="fa fa-search"></i>
+    </span>
+    <span class="popup-btn-close">
+      <i class="fa fa-times-circle"></i>
+    </span>
+    <div class="local-search-input-wrapper">
+      <input autocomplete="off"
+             placeholder="搜索..." spellcheck="false"
+             type="text" id="local-search-input">
+    </div>
+  </div>
+  <div id="local-search-result"></div>
+</div>
+
+
+
+    </div>
+  
+</nav>
+
+
+  
+
+
+
+ </div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://caticat.github.io/2018/05/02/redis-source-zipmap/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/assets/images/avatar.png">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="杂记">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Redis 源码分析-压缩map</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2018-05-02T14:22:52+00:00">2018-05-02</time>
+            
+
+            
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/" itemprop="url" rel="index"><span itemprop="name">redis</span></a></span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/source/" itemprop="url" rel="index"><span itemprop="name">source</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+             <span id="/2018/05/02/redis-source-zipmap/" class="leancloud_visitors" data-flag-title="Redis 源码分析-压缩map">
+               <span class="post-meta-divider">|</span>
+               <span class="post-meta-item-icon">
+                 <i class="fa fa-eye"></i>
+               </span>
+               
+                 <span class="post-meta-item-text">阅读次数：</span>
+               
+                 <span class="leancloud-visitors-count"></span>
+             </span>
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>本质上就是<code>char*</code>字符串<br>通过指定的格式排列的数据结构<br>基本格式</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">&lt;zmlen&gt;	&#x2F;&#x2F; 当zmlen小于254时,记录的是键值对的个数,当等于254时,表示需要遍历整个zipmap才能指导具体的长度</span><br><span class="line">		&lt;len&gt;$key1&lt;len&gt;&lt;free&gt;$value1	&#x2F;&#x2F; 键长度-&gt;键-&gt;值长度-&gt;1字节无用空间长度-&gt;无用空间-&gt;值(无用空间在代码中貌似不太对,有的地方有用,有的地方没有用(关于free的代码都不完善,没有统一),应该是所有使用的地方,无用空间长度都是0)</span><br><span class="line">		&lt;len&gt;$key2&lt;len&gt;&lt;free&gt;$value2</span><br><span class="line">		...</span><br><span class="line">&lt;255&gt; &#x2F;&#x2F; zipmap结尾</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ZIPMAP_BIGLEN 254 <span class="comment">// zm的长度上限,当数据长度超过254时,使用254标记,并将后4(根据unsigned int长度变化)为记录为数据长度</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ZIPMAP_END 255 <span class="comment">// zm的结尾标记</span></span></span><br></pre></td></tr></table></figure>
+
+<h2 id="相关文件"><a href="#相关文件" class="headerlink" title="相关文件"></a>相关文件</h2><ul>
+<li>zipmap.h</li>
+<li>zipmap.c</li>
+</ul>
+<a id="more"></a>
+
+<h2 id="相关概念"><a href="#相关概念" class="headerlink" title="相关概念"></a>相关概念</h2><ul>
+<li><code>void *memmove( void* dest, const void* src, size_t count );</code><br>  memmove用于从src拷贝count个字节到dest，如果目标区域和源区域有重叠的话，memmove能够保证源串在被覆盖之前将重叠区域的字节拷贝到目标区域中。但复制后src内容会被更改。但是当目标区域与源区域没有重叠则和memcpy函数功能相同。</li>
+</ul>
+<h2 id="函数分析"><a href="#函数分析" class="headerlink" title="函数分析"></a>函数分析</h2><h3 id="unsigned-char-zipmapNew-void"><a href="#unsigned-char-zipmapNew-void" class="headerlink" title="unsigned char *zipmapNew(void);"></a><code>unsigned char *zipmapNew(void);</code></h3><h4 id="功能"><a href="#功能" class="headerlink" title="功能"></a>功能</h4><p>创建一个空的zipmap</p>
+<h4 id="源码"><a href="#源码" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Create a new empty zipmap. */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">char</span> *<span class="title">zipmapNew</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *zm = zmalloc(<span class="number">2</span>); <span class="comment">// 只有开始,结束两个标记位</span></span><br><span class="line"></span><br><span class="line">    zm[<span class="number">0</span>] = <span class="number">0</span>; <span class="comment">/* Length */</span></span><br><span class="line">    zm[<span class="number">1</span>] = ZIPMAP_END;</span><br><span class="line">    <span class="keyword">return</span> zm;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-char-zipmapSet-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-val-unsigned-int-vlen-int-update"><a href="#unsigned-char-zipmapSet-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-val-unsigned-int-vlen-int-update" class="headerlink" title="unsigned char *zipmapSet(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned char *val, unsigned int vlen, int *update);"></a><code>unsigned char *zipmapSet(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned char *val, unsigned int vlen, int *update);</code></h3><h4 id="功能-1"><a href="#功能-1" class="headerlink" title="功能"></a>功能</h4><p>insert/update(merge)功能,新增或者修改值</p>
+<h4 id="源码-1"><a href="#源码-1" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Set key to value, creating the key if it does not already exist.</span></span><br><span class="line"><span class="comment"> * If &#x27;update&#x27; is not NULL, *update is set to 1 if the key was</span></span><br><span class="line"><span class="comment"> * already preset, otherwise to 0. */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">char</span> *<span class="title">zipmapSet</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm, <span class="keyword">unsigned</span> <span class="keyword">char</span> *key, <span class="keyword">unsigned</span> <span class="keyword">int</span> klen, <span class="keyword">unsigned</span> <span class="keyword">char</span> *val, <span class="keyword">unsigned</span> <span class="keyword">int</span> vlen, <span class="keyword">int</span> *update)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> zmlen, offset;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> freelen, reqlen = zipmapRequiredLength(klen,vlen); <span class="comment">// 获取到实际需要使用的内存的数量</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> empty, vempty;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *p;</span><br><span class="line"></span><br><span class="line">    freelen = reqlen;</span><br><span class="line">    <span class="keyword">if</span> (update) *update = <span class="number">0</span>;</span><br><span class="line">    p = zipmapLookupRaw(zm,key,klen,&amp;zmlen); <span class="comment">// 查找获取需要更新的key的指针</span></span><br><span class="line">    <span class="keyword">if</span> (p == <span class="literal">NULL</span>) &#123; <span class="comment">// 没有找到,新增</span></span><br><span class="line">        <span class="comment">/* Key not found: enlarge */</span></span><br><span class="line">        zm = zipmapResize(zm, zmlen+reqlen);</span><br><span class="line">        p = zm+zmlen<span class="number">-1</span>;</span><br><span class="line">        zmlen = zmlen+reqlen;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Increase zipmap length (this is an insert) */</span></span><br><span class="line">        <span class="keyword">if</span> (zm[<span class="number">0</span>] &lt; ZIPMAP_BIGLEN) zm[<span class="number">0</span>]++;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* Key found. Is there enough space for the new value? */</span></span><br><span class="line">        <span class="comment">/* Compute the total length: */</span></span><br><span class="line">        <span class="keyword">if</span> (update) *update = <span class="number">1</span>; <span class="comment">// 标记是更新,不是新增</span></span><br><span class="line">        freelen = zipmapRawEntryLength(p); <span class="comment">// 获取到原始键值对的总长度</span></span><br><span class="line">        <span class="keyword">if</span> (freelen &lt; reqlen) &#123; <span class="comment">// 当前zipmap长度不够,需要扩展</span></span><br><span class="line">            <span class="comment">/* Store the offset of this key within the current zipmap, so</span></span><br><span class="line"><span class="comment">             * it can be resized. Then, move the tail backwards so this</span></span><br><span class="line"><span class="comment">             * pair fits at the current position. */</span></span><br><span class="line">            offset = p-zm;</span><br><span class="line">            zm = zipmapResize(zm, zmlen-freelen+reqlen); <span class="comment">// 扩展空间</span></span><br><span class="line">            p = zm+offset;</span><br><span class="line"></span><br><span class="line">            <span class="comment">/* The +1 in the number of bytes to be moved is caused by the</span></span><br><span class="line"><span class="comment">             * end-of-zipmap byte. Note: the *original* zmlen is used. */</span></span><br><span class="line">            memmove(p+reqlen, p+freelen, zmlen-(offset+freelen+<span class="number">1</span>)); <span class="comment">// 将旧数据去掉,后面的数据前移</span></span><br><span class="line">            zmlen = zmlen-freelen+reqlen;</span><br><span class="line">            freelen = reqlen;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* We now have a suitable block where the key/value entry can</span></span><br><span class="line"><span class="comment">     * be written. If there is too much free space, move the tail</span></span><br><span class="line"><span class="comment">     * of the zipmap a few bytes to the front and shrink the zipmap,</span></span><br><span class="line"><span class="comment">     * as we want zipmaps to be very space efficient. */</span></span><br><span class="line">    empty = freelen-reqlen; <span class="comment">// 这里永远是0,所以数据结构中的`free`实际上完全没有使用</span></span><br><span class="line">    <span class="keyword">if</span> (empty &gt;= ZIPMAP_VALUE_MAX_FREE) &#123;</span><br><span class="line">        <span class="comment">/* First, move the tail &lt;empty&gt; bytes to the front, then resize</span></span><br><span class="line"><span class="comment">         * the zipmap to be &lt;empty&gt; bytes smaller. */</span></span><br><span class="line">        offset = p-zm;</span><br><span class="line">        memmove(p+reqlen, p+freelen, zmlen-(offset+freelen+<span class="number">1</span>));</span><br><span class="line">        zmlen -= empty;</span><br><span class="line">        zm = zipmapResize(zm, zmlen);</span><br><span class="line">        p = zm+offset;</span><br><span class="line">        vempty = <span class="number">0</span>;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        vempty = empty;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Just write the key + value and we are done. */</span></span><br><span class="line">    <span class="comment">/* Key: */</span></span><br><span class="line">    p += zipmapEncodeLength(p,klen); <span class="comment">// 写键长度</span></span><br><span class="line">    <span class="built_in">memcpy</span>(p,key,klen); <span class="comment">// 复制键</span></span><br><span class="line">    p += klen; <span class="comment">// 指针后移</span></span><br><span class="line">    <span class="comment">/* Value: */</span></span><br><span class="line">    p += zipmapEncodeLength(p,vlen); <span class="comment">// 写值长度</span></span><br><span class="line">    *p++ = vempty; <span class="comment">// 写free的长度(就是0,后面连按照free长度写空字节的代码都没有,如果free真有意义,这里就有逻辑问题了)</span></span><br><span class="line">    <span class="built_in">memcpy</span>(p,val,vlen); <span class="comment">// 复制值</span></span><br><span class="line">    <span class="keyword">return</span> zm; <span class="comment">// 返回新的zipmap</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-char-zipmapDel-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-int-deleted"><a href="#unsigned-char-zipmapDel-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-int-deleted" class="headerlink" title="unsigned char *zipmapDel(unsigned char *zm, unsigned char *key, unsigned int klen, int *deleted);"></a><code>unsigned char *zipmapDel(unsigned char *zm, unsigned char *key, unsigned int klen, int *deleted);</code></h3><h4 id="功能-2"><a href="#功能-2" class="headerlink" title="功能"></a>功能</h4><p>删除指定键值对</p>
+<h4 id="源码-2"><a href="#源码-2" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Remove the specified key. If &#x27;deleted&#x27; is not NULL the pointed integer is</span></span><br><span class="line"><span class="comment"> * set to 0 if the key was not found, to 1 if it was found and deleted. */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">char</span> *<span class="title">zipmapDel</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm, <span class="keyword">unsigned</span> <span class="keyword">char</span> *key, <span class="keyword">unsigned</span> <span class="keyword">int</span> klen, <span class="keyword">int</span> *deleted)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> zmlen, freelen;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *p = zipmapLookupRaw(zm,key,klen,&amp;zmlen); <span class="comment">// 找到key的起始位置</span></span><br><span class="line">    <span class="keyword">if</span> (p) &#123; <span class="comment">// 找到了</span></span><br><span class="line">        freelen = zipmapRawEntryLength(p); <span class="comment">// 获取整体的键值对长度</span></span><br><span class="line">        memmove(p, p+freelen, zmlen-((p-zm)+freelen+<span class="number">1</span>)); <span class="comment">// 后面的前移覆盖</span></span><br><span class="line">        zm = zipmapResize(zm, zmlen-freelen); <span class="comment">// 重新分配内存使用大小</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Decrease zipmap length */</span></span><br><span class="line">        <span class="keyword">if</span> (zm[<span class="number">0</span>] &lt; ZIPMAP_BIGLEN) zm[<span class="number">0</span>]--; <span class="comment">// 更新头部的长度记录</span></span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (deleted) *deleted = <span class="number">1</span>; <span class="comment">// 标记已找到</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; <span class="comment">// 没找到</span></span><br><span class="line">        <span class="keyword">if</span> (deleted) *deleted = <span class="number">0</span>; <span class="comment">// 标记未找到</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> zm;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-char-zipmapRewind-unsigned-char-zm"><a href="#unsigned-char-zipmapRewind-unsigned-char-zm" class="headerlink" title="unsigned char *zipmapRewind(unsigned char *zm);"></a><code>unsigned char *zipmapRewind(unsigned char *zm);</code></h3><h4 id="功能-3"><a href="#功能-3" class="headerlink" title="功能"></a>功能</h4><p>跳过zm开头的长度记录字节,遍历用的统一起始接口</p>
+<h4 id="源码-3"><a href="#源码-3" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Call before iterating through elements via zipmapNext() */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">char</span> *<span class="title">zipmapRewind</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> zm+<span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-char-zipmapNext-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-value-unsigned-int-vlen"><a href="#unsigned-char-zipmapNext-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-value-unsigned-int-vlen" class="headerlink" title="unsigned char *zipmapNext(unsigned char *zm, unsigned char **key, unsigned int *klen, unsigned char **value, unsigned int *vlen);"></a><code>unsigned char *zipmapNext(unsigned char *zm, unsigned char **key, unsigned int *klen, unsigned char **value, unsigned int *vlen);</code></h3><h4 id="功能-4"><a href="#功能-4" class="headerlink" title="功能"></a>功能</h4><p>遍历,获取下一个数据,无数据则返回空</p>
+<h4 id="源码-4"><a href="#源码-4" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* This function is used to iterate through all the zipmap elements.</span></span><br><span class="line"><span class="comment"> * In the first call the first argument is the pointer to the zipmap + 1.</span></span><br><span class="line"><span class="comment"> * In the next calls what zipmapNext returns is used as first argument.</span></span><br><span class="line"><span class="comment"> * Example:</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * unsigned char *i = zipmapRewind(my_zipmap);</span></span><br><span class="line"><span class="comment"> * while((i = zipmapNext(i,&amp;key,&amp;klen,&amp;value,&amp;vlen)) != NULL) &#123;</span></span><br><span class="line"><span class="comment"> *     printf(&quot;%d bytes key at $p\n&quot;, klen, key);</span></span><br><span class="line"><span class="comment"> *     printf(&quot;%d bytes value at $p\n&quot;, vlen, value);</span></span><br><span class="line"><span class="comment"> * &#125;</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">char</span> *<span class="title">zipmapNext</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm, <span class="keyword">unsigned</span> <span class="keyword">char</span> **key, <span class="keyword">unsigned</span> <span class="keyword">int</span> *klen, <span class="keyword">unsigned</span> <span class="keyword">char</span> **value, <span class="keyword">unsigned</span> <span class="keyword">int</span> *vlen)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (zm[<span class="number">0</span>] == ZIPMAP_END) <span class="keyword">return</span> <span class="literal">NULL</span>; <span class="comment">// 结尾返回空</span></span><br><span class="line">    <span class="keyword">if</span> (key) &#123;</span><br><span class="line">        *key = zm; <span class="comment">// 记录键的起始指针</span></span><br><span class="line">        *klen = zipmapDecodeLength(zm); <span class="comment">// 获取键的长度</span></span><br><span class="line">        *key += ZIPMAP_LEN_BYTES(*klen); <span class="comment">// 获取实际键的偏移指针</span></span><br><span class="line">    &#125;</span><br><span class="line">    zm += zipmapRawKeyLength(zm); <span class="comment">// 过掉键字段</span></span><br><span class="line">    <span class="keyword">if</span> (value) &#123;</span><br><span class="line">        *value = zm+<span class="number">1</span>; <span class="comment">// 获取到值的首地址</span></span><br><span class="line">        *vlen = zipmapDecodeLength(zm); <span class="comment">// 获取值的长度</span></span><br><span class="line">        *value += ZIPMAP_LEN_BYTES(*vlen); <span class="comment">// 获取值的实际偏移指针</span></span><br><span class="line">    &#125;</span><br><span class="line">    zm += zipmapRawValueLength(zm); <span class="comment">// 过掉值字段</span></span><br><span class="line">    <span class="keyword">return</span> zm; <span class="comment">// 返回偏移后的zipmap数据</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-zipmapGet-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-value-unsigned-int-vlen"><a href="#int-zipmapGet-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-value-unsigned-int-vlen" class="headerlink" title="int zipmapGet(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned char **value, unsigned int *vlen);"></a><code>int zipmapGet(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned char **value, unsigned int *vlen);</code></h3><h4 id="功能-5"><a href="#功能-5" class="headerlink" title="功能"></a>功能</h4><p>根据键,获取值,返回是否找到</p>
+<h4 id="源码-5"><a href="#源码-5" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Search a key and retrieve the pointer and len of the associated value.</span></span><br><span class="line"><span class="comment"> * If the key is found the function returns 1, otherwise 0. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">zipmapGet</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm, <span class="keyword">unsigned</span> <span class="keyword">char</span> *key, <span class="keyword">unsigned</span> <span class="keyword">int</span> klen, <span class="keyword">unsigned</span> <span class="keyword">char</span> **value, <span class="keyword">unsigned</span> <span class="keyword">int</span> *vlen)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *p;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> ((p = zipmapLookupRaw(zm,key,klen,<span class="literal">NULL</span>)) == <span class="literal">NULL</span>) <span class="keyword">return</span> <span class="number">0</span>; <span class="comment">// 查找键的位置</span></span><br><span class="line">    p += zipmapRawKeyLength(p); <span class="comment">// 跳过键的整体长度</span></span><br><span class="line">    *vlen = zipmapDecodeLength(p); <span class="comment">// 获取值的长度</span></span><br><span class="line">    *value = p + ZIPMAP_LEN_BYTES(*vlen) + <span class="number">1</span>; <span class="comment">// 获取值的指针</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-zipmapExists-unsigned-char-zm-unsigned-char-key-unsigned-int-klen"><a href="#int-zipmapExists-unsigned-char-zm-unsigned-char-key-unsigned-int-klen" class="headerlink" title="int zipmapExists(unsigned char *zm, unsigned char *key, unsigned int klen);"></a><code>int zipmapExists(unsigned char *zm, unsigned char *key, unsigned int klen);</code></h3><h4 id="功能-6"><a href="#功能-6" class="headerlink" title="功能"></a>功能</h4><p>判断键是否存在</p>
+<h4 id="源码-6"><a href="#源码-6" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Return 1 if the key exists, otherwise 0 is returned. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">zipmapExists</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm, <span class="keyword">unsigned</span> <span class="keyword">char</span> *key, <span class="keyword">unsigned</span> <span class="keyword">int</span> klen)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> zipmapLookupRaw(zm,key,klen,<span class="literal">NULL</span>) != <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-int-zipmapLen-unsigned-char-zm"><a href="#unsigned-int-zipmapLen-unsigned-char-zm" class="headerlink" title="unsigned int zipmapLen(unsigned char *zm);"></a><code>unsigned int zipmapLen(unsigned char *zm);</code></h3><h4 id="功能-7"><a href="#功能-7" class="headerlink" title="功能"></a>功能</h4><p>获取zipmap的长度<br>zm[0] &lt; ZIPMAP_BIGLEN则取首地址值,否则遍历计算</p>
+<h4 id="源码-7"><a href="#源码-7" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Return the number of entries inside a zipmap */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">zipmapLen</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> len = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (zm[<span class="number">0</span>] &lt; ZIPMAP_BIGLEN) &#123;</span><br><span class="line">        len = zm[<span class="number">0</span>];</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">char</span> *p = zipmapRewind(zm);</span><br><span class="line">        <span class="keyword">while</span>((p = zipmapNext(p,<span class="literal">NULL</span>,<span class="literal">NULL</span>,<span class="literal">NULL</span>,<span class="literal">NULL</span>)) != <span class="literal">NULL</span>) len++;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Re-store length if small enough */</span></span><br><span class="line">        <span class="keyword">if</span> (len &lt; ZIPMAP_BIGLEN) zm[<span class="number">0</span>] = len;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> len;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="size-t-zipmapBlobLen-unsigned-char-zm"><a href="#size-t-zipmapBlobLen-unsigned-char-zm" class="headerlink" title="size_t zipmapBlobLen(unsigned char *zm);"></a><code>size_t zipmapBlobLen(unsigned char *zm);</code></h3><h4 id="功能-8"><a href="#功能-8" class="headerlink" title="功能"></a>功能</h4><p>获取zipmap所占的所有字节数(从头到结束)</p>
+<h4 id="源码-8"><a href="#源码-8" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Return the raw size in bytes of a zipmap, so that we can serialize</span></span><br><span class="line"><span class="comment"> * the zipmap on disk (or everywhere is needed) just writing the returned</span></span><br><span class="line"><span class="comment"> * amount of bytes of the C array starting at the zipmap pointer. */</span></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">zipmapBlobLen</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> totlen;</span><br><span class="line">    zipmapLookupRaw(zm,<span class="literal">NULL</span>,<span class="number">0</span>,&amp;totlen); <span class="comment">// 这里不需要查找键值对,只需要统计总字节数</span></span><br><span class="line">    <span class="keyword">return</span> totlen;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="static-unsigned-int-zipmapDecodeLength-unsigned-char-p"><a href="#static-unsigned-int-zipmapDecodeLength-unsigned-char-p" class="headerlink" title="static unsigned int zipmapDecodeLength(unsigned char *p);"></a><code>static unsigned int zipmapDecodeLength(unsigned char *p);</code></h3><h4 id="功能-9"><a href="#功能-9" class="headerlink" title="功能"></a>功能</h4><p>通用的获取长度值的方法</p>
+<h4 id="源码-9"><a href="#源码-9" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Decode the encoded length pointed by &#x27;p&#x27; */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">zipmapDecodeLength</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *p)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> len = *p; <span class="comment">// 获取首地址值</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (len &lt; ZIPMAP_BIGLEN) <span class="keyword">return</span> len; <span class="comment">// 小于254,直接返回</span></span><br><span class="line">    <span class="built_in">memcpy</span>(&amp;len,p+<span class="number">1</span>,<span class="keyword">sizeof</span>(<span class="keyword">unsigned</span> <span class="keyword">int</span>)); <span class="comment">// 获取后4(动态)位</span></span><br><span class="line">    memrev32ifbe(&amp;len); <span class="comment">// 将数据按照host本地字节序转化</span></span><br><span class="line">    <span class="keyword">return</span> len;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-unsigned-int-zipmapEncodeLength-unsigned-char-p-unsigned-int-len"><a href="#static-unsigned-int-zipmapEncodeLength-unsigned-char-p-unsigned-int-len" class="headerlink" title="static unsigned int zipmapEncodeLength(unsigned char *p, unsigned int len);"></a><code>static unsigned int zipmapEncodeLength(unsigned char *p, unsigned int len);</code></h3><h4 id="功能-10"><a href="#功能-10" class="headerlink" title="功能"></a>功能</h4><p>根据实际长度,获取到编码后占用的字节长度</p>
+<h4 id="源码-10"><a href="#源码-10" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Encode the length &#x27;l&#x27; writing it in &#x27;p&#x27;. If p is NULL it just returns</span></span><br><span class="line"><span class="comment"> * the amount of bytes required to encode such a length. */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">zipmapEncodeLength</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *p, <span class="keyword">unsigned</span> <span class="keyword">int</span> len)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (p == <span class="literal">NULL</span>) &#123; <span class="comment">// 没有传入zm</span></span><br><span class="line">        <span class="keyword">return</span> ZIPMAP_LEN_BYTES(len); <span class="comment">// 直接返回容纳这个长度需要的字节数</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; <span class="comment">// 记录数据长度</span></span><br><span class="line">        <span class="keyword">if</span> (len &lt; ZIPMAP_BIGLEN) &#123;</span><br><span class="line">            p[<span class="number">0</span>] = len;</span><br><span class="line">            <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            p[<span class="number">0</span>] = ZIPMAP_BIGLEN;</span><br><span class="line">            <span class="built_in">memcpy</span>(p+<span class="number">1</span>,&amp;len,<span class="keyword">sizeof</span>(len));</span><br><span class="line">            memrev32ifbe(p+<span class="number">1</span>);</span><br><span class="line">            <span class="keyword">return</span> <span class="number">1</span>+<span class="keyword">sizeof</span>(len);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-unsigned-char-zipmapLookupRaw-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-int-totlen"><a href="#static-unsigned-char-zipmapLookupRaw-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-int-totlen" class="headerlink" title="static unsigned char *zipmapLookupRaw(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned int *totlen);"></a><code>static unsigned char *zipmapLookupRaw(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned int *totlen);</code></h3><h4 id="功能-11"><a href="#功能-11" class="headerlink" title="功能"></a>功能</h4><p>key存在,查找指定key所在的头指针<br>totlen存在,返回整个zm占用的字节长度</p>
+<h4 id="源码-11"><a href="#源码-11" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Search for a matching key, returning a pointer to the entry inside the</span></span><br><span class="line"><span class="comment"> * zipmap. Returns NULL if the key is not found.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * If NULL is returned, and totlen is not NULL, it is set to the entire</span></span><br><span class="line"><span class="comment"> * size of the zimap, so that the calling function will be able to</span></span><br><span class="line"><span class="comment"> * reallocate the original zipmap to make room for more entries. */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">unsigned</span> <span class="keyword">char</span> *<span class="title">zipmapLookupRaw</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm, <span class="keyword">unsigned</span> <span class="keyword">char</span> *key, <span class="keyword">unsigned</span> <span class="keyword">int</span> klen, <span class="keyword">unsigned</span> <span class="keyword">int</span> *totlen)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *p = zm+<span class="number">1</span>, *k = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> l,llen;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">while</span>(*p != ZIPMAP_END) &#123; <span class="comment">// 循环遍历字节到结尾</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">char</span> <span class="built_in">free</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Match or skip the key */</span></span><br><span class="line">        l = zipmapDecodeLength(p);</span><br><span class="line">        llen = zipmapEncodeLength(<span class="literal">NULL</span>,l);</span><br><span class="line">        <span class="keyword">if</span> (key != <span class="literal">NULL</span> &amp;&amp; k == <span class="literal">NULL</span> &amp;&amp; l == klen &amp;&amp; !<span class="built_in">memcmp</span>(p+llen,key,l)) &#123; <span class="comment">// 查找匹配的key</span></span><br><span class="line">            <span class="comment">/* Only return when the user doesn&#x27;t care</span></span><br><span class="line"><span class="comment">             * for the total length of the zipmap. */</span></span><br><span class="line">            <span class="keyword">if</span> (totlen != <span class="literal">NULL</span>) &#123; <span class="comment">// 不需要计算长度,则直接返回,否则继续循环</span></span><br><span class="line">                k = p;</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="keyword">return</span> p;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        p += llen+l;</span><br><span class="line">        <span class="comment">/* Skip the value as well */</span></span><br><span class="line">        l = zipmapDecodeLength(p);</span><br><span class="line">        p += zipmapEncodeLength(<span class="literal">NULL</span>,l);</span><br><span class="line">        <span class="built_in">free</span> = p[<span class="number">0</span>];</span><br><span class="line">        p += l+<span class="number">1</span>+<span class="built_in">free</span>; <span class="comment">/* +1 to skip the free byte */</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (totlen != <span class="literal">NULL</span>) *totlen = (<span class="keyword">unsigned</span> <span class="keyword">int</span>)(p-zm)+<span class="number">1</span>; <span class="comment">// 计算最终字节长度</span></span><br><span class="line">    <span class="keyword">return</span> k;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-unsigned-long-zipmapRequiredLength-unsigned-int-klen-unsigned-int-vlen"><a href="#static-unsigned-long-zipmapRequiredLength-unsigned-int-klen-unsigned-int-vlen" class="headerlink" title="static unsigned long zipmapRequiredLength(unsigned int klen, unsigned int vlen);"></a><code>static unsigned long zipmapRequiredLength(unsigned int klen, unsigned int vlen);</code></h3><h4 id="功能-12"><a href="#功能-12" class="headerlink" title="功能"></a>功能</h4><p>根据键值长度,计算存储需要的数据量</p>
+<h4 id="源码-12"><a href="#源码-12" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="title">zipmapRequiredLength</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">int</span> klen, <span class="keyword">unsigned</span> <span class="keyword">int</span> vlen)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> l;</span><br><span class="line"></span><br><span class="line">    l = klen+vlen+<span class="number">3</span>;</span><br><span class="line">    <span class="keyword">if</span> (klen &gt;= ZIPMAP_BIGLEN) l += <span class="number">4</span>;</span><br><span class="line">    <span class="keyword">if</span> (vlen &gt;= ZIPMAP_BIGLEN) l += <span class="number">4</span>;</span><br><span class="line">    <span class="keyword">return</span> l;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-unsigned-int-zipmapRawKeyLength-unsigned-char-p"><a href="#static-unsigned-int-zipmapRawKeyLength-unsigned-char-p" class="headerlink" title="static unsigned int zipmapRawKeyLength(unsigned char *p);"></a><code>static unsigned int zipmapRawKeyLength(unsigned char *p);</code></h3><h4 id="功能-13"><a href="#功能-13" class="headerlink" title="功能"></a>功能</h4><p>获取key的总长度(数据+长度记录)</p>
+<h4 id="源码-13"><a href="#源码-13" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Return the total amount used by a key (encoded length + payload) */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">zipmapRawKeyLength</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *p)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> l = zipmapDecodeLength(p);</span><br><span class="line">    <span class="keyword">return</span> zipmapEncodeLength(<span class="literal">NULL</span>,l) + l;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-unsigned-int-zipmapRawValueLength-unsigned-char-p"><a href="#static-unsigned-int-zipmapRawValueLength-unsigned-char-p" class="headerlink" title="static unsigned int zipmapRawValueLength(unsigned char *p);"></a><code>static unsigned int zipmapRawValueLength(unsigned char *p);</code></h3><h4 id="功能-14"><a href="#功能-14" class="headerlink" title="功能"></a>功能</h4><p>获取value的总长度(数据+长度记录)</p>
+<h4 id="源码-14"><a href="#源码-14" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Return the total amount used by a value</span></span><br><span class="line"><span class="comment"> * (encoded length + single byte free count + payload) */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">zipmapRawValueLength</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *p)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> l = zipmapDecodeLength(p);</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> used;</span><br><span class="line"></span><br><span class="line">    used = zipmapEncodeLength(<span class="literal">NULL</span>,l);</span><br><span class="line">    used += p[used] + <span class="number">1</span> + l; <span class="comment">// 多了一个free的处理</span></span><br><span class="line">    <span class="keyword">return</span> used;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-unsigned-int-zipmapRawEntryLength-unsigned-char-p"><a href="#static-unsigned-int-zipmapRawEntryLength-unsigned-char-p" class="headerlink" title="static unsigned int zipmapRawEntryLength(unsigned char *p);"></a><code>static unsigned int zipmapRawEntryLength(unsigned char *p);</code></h3><h4 id="功能-15"><a href="#功能-15" class="headerlink" title="功能"></a>功能</h4><p>获取键值对的完整长度</p>
+<h4 id="源码-15"><a href="#源码-15" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* If &#x27;p&#x27; points to a key, this function returns the total amount of</span></span><br><span class="line"><span class="comment"> * bytes used to store this entry (entry = key + associated value + trailing</span></span><br><span class="line"><span class="comment"> * free space if any). */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">zipmapRawEntryLength</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *p)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> l = zipmapRawKeyLength(p);</span><br><span class="line">    <span class="keyword">return</span> l + zipmapRawValueLength(p+l);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-inline-unsigned-char-zipmapResize-unsigned-char-zm-unsigned-int-len"><a href="#static-inline-unsigned-char-zipmapResize-unsigned-char-zm-unsigned-int-len" class="headerlink" title="static inline unsigned char *zipmapResize(unsigned char *zm, unsigned int len);"></a><code>static inline unsigned char *zipmapResize(unsigned char *zm, unsigned int len);</code></h3><h4 id="功能-16"><a href="#功能-16" class="headerlink" title="功能"></a>功能</h4><p>重新设置zm的内存大小(新长度小于就长度会截断)</p>
+<h4 id="源码-16"><a href="#源码-16" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">unsigned</span> <span class="keyword">char</span> *<span class="title">zipmapResize</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">char</span> *zm, <span class="keyword">unsigned</span> <span class="keyword">int</span> len)</span> </span>&#123;</span><br><span class="line">    zm = zrealloc(zm, len);</span><br><span class="line">    zm[len<span class="number">-1</span>] = ZIPMAP_END;</span><br><span class="line">    <span class="keyword">return</span> zm;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/database/" rel="tag"># database</a>
+          
+            <a href="/tags/redis/" rel="tag"># redis</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2018/04/27/redis-source-string/" rel="next" title="Redis 源码分析-字符串">
+                <i class="fa fa-chevron-left"></i> Redis 源码分析-字符串
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2018/05/03/redis-source-dict/" rel="prev" title="Redis 源码分析-哈希表">
+                Redis 源码分析-哈希表 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+  
+    <div id="gitalk-container"></div>
+  
+
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <img class="site-author-image" itemprop="image"
+                src="/assets/images/avatar.png"
+                alt="" />
+            
+              <p class="site-author-name" itemprop="name"></p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/%20%7C%7C%20archive">
+                
+                    <span class="site-state-item-count">59</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">14</span>
+                    <span class="site-state-item-name">分类</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">29</span>
+                    <span class="site-state-item-name">标签</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+            <div class="links-of-author motion-element">
+              
+                <span class="links-of-author-item">
+                  <a href="https://github.com/caticat" target="_blank" title="GitHub"><i class="fa fa-fw fa-github"></i>GitHub</a>
+                  
+                </span>
+              
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%96%87%E4%BB%B6"><span class="nav-number">1.</span> <span class="nav-text">相关文件</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%A6%82%E5%BF%B5"><span class="nav-number">2.</span> <span class="nav-text">相关概念</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E5%88%86%E6%9E%90"><span class="nav-number">3.</span> <span class="nav-text">函数分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-char-zipmapNew-void"><span class="nav-number">3.1.</span> <span class="nav-text">unsigned char *zipmapNew(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD"><span class="nav-number">3.1.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81"><span class="nav-number">3.1.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-char-zipmapSet-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-val-unsigned-int-vlen-int-update"><span class="nav-number">3.2.</span> <span class="nav-text">unsigned char *zipmapSet(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned char *val, unsigned int vlen, int *update);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-1"><span class="nav-number">3.2.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-1"><span class="nav-number">3.2.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-char-zipmapDel-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-int-deleted"><span class="nav-number">3.3.</span> <span class="nav-text">unsigned char *zipmapDel(unsigned char *zm, unsigned char *key, unsigned int klen, int *deleted);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-2"><span class="nav-number">3.3.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-2"><span class="nav-number">3.3.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-char-zipmapRewind-unsigned-char-zm"><span class="nav-number">3.4.</span> <span class="nav-text">unsigned char *zipmapRewind(unsigned char *zm);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-3"><span class="nav-number">3.4.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-3"><span class="nav-number">3.4.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-char-zipmapNext-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-value-unsigned-int-vlen"><span class="nav-number">3.5.</span> <span class="nav-text">unsigned char *zipmapNext(unsigned char *zm, unsigned char **key, unsigned int *klen, unsigned char **value, unsigned int *vlen);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-4"><span class="nav-number">3.5.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-4"><span class="nav-number">3.5.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-zipmapGet-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-char-value-unsigned-int-vlen"><span class="nav-number">3.6.</span> <span class="nav-text">int zipmapGet(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned char **value, unsigned int *vlen);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-5"><span class="nav-number">3.6.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-5"><span class="nav-number">3.6.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-zipmapExists-unsigned-char-zm-unsigned-char-key-unsigned-int-klen"><span class="nav-number">3.7.</span> <span class="nav-text">int zipmapExists(unsigned char *zm, unsigned char *key, unsigned int klen);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-6"><span class="nav-number">3.7.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-6"><span class="nav-number">3.7.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-int-zipmapLen-unsigned-char-zm"><span class="nav-number">3.8.</span> <span class="nav-text">unsigned int zipmapLen(unsigned char *zm);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-7"><span class="nav-number">3.8.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-7"><span class="nav-number">3.8.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size-t-zipmapBlobLen-unsigned-char-zm"><span class="nav-number">3.9.</span> <span class="nav-text">size_t zipmapBlobLen(unsigned char *zm);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-8"><span class="nav-number">3.9.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-8"><span class="nav-number">3.9.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-unsigned-int-zipmapDecodeLength-unsigned-char-p"><span class="nav-number">3.10.</span> <span class="nav-text">static unsigned int zipmapDecodeLength(unsigned char *p);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-9"><span class="nav-number">3.10.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-9"><span class="nav-number">3.10.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-unsigned-int-zipmapEncodeLength-unsigned-char-p-unsigned-int-len"><span class="nav-number">3.11.</span> <span class="nav-text">static unsigned int zipmapEncodeLength(unsigned char *p, unsigned int len);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-10"><span class="nav-number">3.11.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-10"><span class="nav-number">3.11.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-unsigned-char-zipmapLookupRaw-unsigned-char-zm-unsigned-char-key-unsigned-int-klen-unsigned-int-totlen"><span class="nav-number">3.12.</span> <span class="nav-text">static unsigned char *zipmapLookupRaw(unsigned char *zm, unsigned char *key, unsigned int klen, unsigned int *totlen);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-11"><span class="nav-number">3.12.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-11"><span class="nav-number">3.12.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-unsigned-long-zipmapRequiredLength-unsigned-int-klen-unsigned-int-vlen"><span class="nav-number">3.13.</span> <span class="nav-text">static unsigned long zipmapRequiredLength(unsigned int klen, unsigned int vlen);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-12"><span class="nav-number">3.13.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-12"><span class="nav-number">3.13.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-unsigned-int-zipmapRawKeyLength-unsigned-char-p"><span class="nav-number">3.14.</span> <span class="nav-text">static unsigned int zipmapRawKeyLength(unsigned char *p);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-13"><span class="nav-number">3.14.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-13"><span class="nav-number">3.14.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-unsigned-int-zipmapRawValueLength-unsigned-char-p"><span class="nav-number">3.15.</span> <span class="nav-text">static unsigned int zipmapRawValueLength(unsigned char *p);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-14"><span class="nav-number">3.15.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-14"><span class="nav-number">3.15.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-unsigned-int-zipmapRawEntryLength-unsigned-char-p"><span class="nav-number">3.16.</span> <span class="nav-text">static unsigned int zipmapRawEntryLength(unsigned char *p);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-15"><span class="nav-number">3.16.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-15"><span class="nav-number">3.16.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-inline-unsigned-char-zipmapResize-unsigned-char-zm-unsigned-int-len"><span class="nav-number">3.17.</span> <span class="nav-text">static inline unsigned char *zipmapResize(unsigned char *zm, unsigned int len);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-16"><span class="nav-number">3.17.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-16"><span class="nav-number">3.17.2.</span> <span class="nav-text">源码</span></a></li></ol></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2018 &mdash; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate"> 
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Pan</span>
+
+  
+
+  
+</div>
+
+
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/theme-next/hexo-theme-next">NexT.Gemini</a> v6.1.0</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="site-uv" title="总访客量">
+      <i class="fa fa-user"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="site-pv" title="总访问量">
+      <i class="fa fa-eye"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/three.min.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/canvas_lines.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.1.0"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=6.1.0"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.1.0"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.1.0"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.1.0"></script>
+
+
+
+  
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+    <script type="text/javascript">
+    var gitalk = new Gitalk({
+      clientID: 'e8443a1845703a67513c',
+      clientSecret: '0b0efab598ef8cc3657c3853b3c0189da301fb99',
+      repo: 'caticat.github.io',
+      owner: 'caticat',
+      admin: ['caticat'],
+      id: location.pathname,
+      distractionFreeMode: 'false'
+    })
+    gitalk.render('gitalk-container')           
+  </script>
+
+
+  
+
+  <script type="text/javascript">
+    // Popup Window;
+    var isfetched = false;
+    var isXml = true;
+    // Search DB path;
+    var search_path = "search.xml";
+    if (search_path.length === 0) {
+      search_path = "search.xml";
+    } else if (/json$/i.test(search_path)) {
+      isXml = false;
+    }
+    var path = "/" + search_path;
+    // monitor main search box;
+
+    var onPopupClose = function (e) {
+      $('.popup').hide();
+      $('#local-search-input').val('');
+      $('.search-result-list').remove();
+      $('#no-result').remove();
+      $(".local-search-pop-overlay").remove();
+      $('body').css('overflow', '');
+    }
+
+    function proceedsearch() {
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay"></div>')
+        .css('overflow', 'hidden');
+      $('.search-popup-overlay').click(onPopupClose);
+      $('.popup').toggle();
+      var $localSearchInput = $('#local-search-input');
+      $localSearchInput.attr("autocapitalize", "none");
+      $localSearchInput.attr("autocorrect", "off");
+      $localSearchInput.focus();
+    }
+
+    // search function;
+    var searchFunc = function(path, search_id, content_id) {
+      'use strict';
+
+      // start loading animation
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay">' +
+          '<div id="search-loading-icon">' +
+          '<i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>' +
+          '</div>' +
+          '</div>')
+        .css('overflow', 'hidden');
+      $("#search-loading-icon").css('margin', '20% auto 0 auto').css('text-align', 'center');
+
+      
+
+      $.ajax({
+        url: path,
+        dataType: isXml ? "xml" : "json",
+        async: true,
+        success: function(res) {
+          // get the contents from search data
+          isfetched = true;
+          $('.popup').detach().appendTo('.header-inner');
+          var datas = isXml ? $("entry", res).map(function() {
+            return {
+              title: $("title", this).text(),
+              content: $("content",this).text(),
+              url: $("url" , this).text()
+            };
+          }).get() : res;
+          var input = document.getElementById(search_id);
+          var resultContent = document.getElementById(content_id);
+          var inputEventFunction = function() {
+            var searchText = input.value.trim().toLowerCase();
+            var keywords = searchText.split(/[\s\-]+/);
+            if (keywords.length > 1) {
+              keywords.push(searchText);
+            }
+            var resultItems = [];
+            if (searchText.length > 0) {
+              // perform local searching
+              datas.forEach(function(data) {
+                var isMatch = false;
+                var hitCount = 0;
+                var searchTextCount = 0;
+                var title = data.title.trim();
+                var titleInLowerCase = title.toLowerCase();
+                var content = data.content.trim().replace(/<[^>]+>/g,"");
+                
+                var contentInLowerCase = content.toLowerCase();
+                var articleUrl = decodeURIComponent(data.url);
+                var indexOfTitle = [];
+                var indexOfContent = [];
+                // only match articles with not empty titles
+                if(title != '') {
+                  keywords.forEach(function(keyword) {
+                    function getIndexByWord(word, text, caseSensitive) {
+                      var wordLen = word.length;
+                      if (wordLen === 0) {
+                        return [];
+                      }
+                      var startPosition = 0, position = [], index = [];
+                      if (!caseSensitive) {
+                        text = text.toLowerCase();
+                        word = word.toLowerCase();
+                      }
+                      while ((position = text.indexOf(word, startPosition)) > -1) {
+                        index.push({position: position, word: word});
+                        startPosition = position + wordLen;
+                      }
+                      return index;
+                    }
+
+                    indexOfTitle = indexOfTitle.concat(getIndexByWord(keyword, titleInLowerCase, false));
+                    indexOfContent = indexOfContent.concat(getIndexByWord(keyword, contentInLowerCase, false));
+                  });
+                  if (indexOfTitle.length > 0 || indexOfContent.length > 0) {
+                    isMatch = true;
+                    hitCount = indexOfTitle.length + indexOfContent.length;
+                  }
+                }
+
+                // show search results
+
+                if (isMatch) {
+                  // sort index by position of keyword
+
+                  [indexOfTitle, indexOfContent].forEach(function (index) {
+                    index.sort(function (itemLeft, itemRight) {
+                      if (itemRight.position !== itemLeft.position) {
+                        return itemRight.position - itemLeft.position;
+                      } else {
+                        return itemLeft.word.length - itemRight.word.length;
+                      }
+                    });
+                  });
+
+                  // merge hits into slices
+
+                  function mergeIntoSlice(text, start, end, index) {
+                    var item = index[index.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    var hits = [];
+                    var searchTextCountInSlice = 0;
+                    while (position + word.length <= end && index.length != 0) {
+                      if (word === searchText) {
+                        searchTextCountInSlice++;
+                      }
+                      hits.push({position: position, length: word.length});
+                      var wordEnd = position + word.length;
+
+                      // move to next position of hit
+
+                      index.pop();
+                      while (index.length != 0) {
+                        item = index[index.length - 1];
+                        position = item.position;
+                        word = item.word;
+                        if (wordEnd > position) {
+                          index.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                    searchTextCount += searchTextCountInSlice;
+                    return {
+                      hits: hits,
+                      start: start,
+                      end: end,
+                      searchTextCount: searchTextCountInSlice
+                    };
+                  }
+
+                  var slicesOfTitle = [];
+                  if (indexOfTitle.length != 0) {
+                    slicesOfTitle.push(mergeIntoSlice(title, 0, title.length, indexOfTitle));
+                  }
+
+                  var slicesOfContent = [];
+                  while (indexOfContent.length != 0) {
+                    var item = indexOfContent[indexOfContent.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    // cut out 100 characters
+                    var start = position - 20;
+                    var end = position + 80;
+                    if(start < 0){
+                      start = 0;
+                    }
+                    if (end < position + word.length) {
+                      end = position + word.length;
+                    }
+                    if(end > content.length){
+                      end = content.length;
+                    }
+                    slicesOfContent.push(mergeIntoSlice(content, start, end, indexOfContent));
+                  }
+
+                  // sort slices in content by search text's count and hits' count
+
+                  slicesOfContent.sort(function (sliceLeft, sliceRight) {
+                    if (sliceLeft.searchTextCount !== sliceRight.searchTextCount) {
+                      return sliceRight.searchTextCount - sliceLeft.searchTextCount;
+                    } else if (sliceLeft.hits.length !== sliceRight.hits.length) {
+                      return sliceRight.hits.length - sliceLeft.hits.length;
+                    } else {
+                      return sliceLeft.start - sliceRight.start;
+                    }
+                  });
+
+                  // select top N slices in content
+
+                  var upperBound = parseInt('1');
+                  if (upperBound >= 0) {
+                    slicesOfContent = slicesOfContent.slice(0, upperBound);
+                  }
+
+                  // highlight title and content
+
+                  function highlightKeyword(text, slice) {
+                    var result = '';
+                    var prevEnd = slice.start;
+                    slice.hits.forEach(function (hit) {
+                      result += text.substring(prevEnd, hit.position);
+                      var end = hit.position + hit.length;
+                      result += '<b class="search-keyword">' + text.substring(hit.position, end) + '</b>';
+                      prevEnd = end;
+                    });
+                    result += text.substring(prevEnd, slice.end);
+                    return result;
+                  }
+
+                  var resultItem = '';
+
+                  if (slicesOfTitle.length != 0) {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + highlightKeyword(title, slicesOfTitle[0]) + "</a>";
+                  } else {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + title + "</a>";
+                  }
+
+                  slicesOfContent.forEach(function (slice) {
+                    resultItem += "<a href='" + articleUrl + "'>" +
+                      "<p class=\"search-result\">" + highlightKeyword(content, slice) +
+                      "...</p>" + "</a>";
+                  });
+
+                  resultItem += "</li>";
+                  resultItems.push({
+                    item: resultItem,
+                    searchTextCount: searchTextCount,
+                    hitCount: hitCount,
+                    id: resultItems.length
+                  });
+                }
+              })
+            };
+            if (keywords.length === 1 && keywords[0] === "") {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-search fa-5x" /></div>'
+            } else if (resultItems.length === 0) {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-frown-o fa-5x" /></div>'
+            } else {
+              resultItems.sort(function (resultLeft, resultRight) {
+                if (resultLeft.searchTextCount !== resultRight.searchTextCount) {
+                  return resultRight.searchTextCount - resultLeft.searchTextCount;
+                } else if (resultLeft.hitCount !== resultRight.hitCount) {
+                  return resultRight.hitCount - resultLeft.hitCount;
+                } else {
+                  return resultRight.id - resultLeft.id;
+                }
+              });
+              var searchResultList = '<ul class=\"search-result-list\">';
+              resultItems.forEach(function (result) {
+                searchResultList += result.item;
+              })
+              searchResultList += "</ul>";
+              resultContent.innerHTML = searchResultList;
+            }
+          }
+
+          if ('auto' === 'auto') {
+            input.addEventListener('input', inputEventFunction);
+          } else {
+            $('.search-icon').click(inputEventFunction);
+            input.addEventListener('keypress', function (event) {
+              if (event.keyCode === 13) {
+                inputEventFunction();
+              }
+            });
+          }
+
+          // remove loading animation
+          $(".local-search-pop-overlay").remove();
+          $('body').css('overflow', '');
+
+          proceedsearch();
+        }
+      });
+    }
+
+    // handle and trigger popup window;
+    $('.popup-trigger').click(function(e) {
+      e.stopPropagation();
+      if (isfetched === false) {
+        searchFunc(path, 'local-search-input', 'local-search-result');
+      } else {
+        proceedsearch();
+      };
+    });
+
+    $('.popup-btn-close').click(onPopupClose);
+    $('.popup').click(function(e){
+      e.stopPropagation();
+    });
+    $(document).on('keyup', function (event) {
+      var shouldDismissSearchPopup = event.which === 27 &&
+        $('.search-popup').is(':visible');
+      if (shouldDismissSearchPopup) {
+        onPopupClose();
+      }
+    });
+  </script>
+
+
+
+
+
+  
+
+  
+  <script src="https://cdn1.lncld.net/static/js/av-core-mini-0.6.4.js"></script>
+  <script>AV.initialize("BVY1wsbMOInpuLTE6Xks1hEo-gzGzoHsz", "9t3lzissKkIRVwunmGW4bgkp");</script>
+  <script>
+    function showTime(Counter) {
+      var query = new AV.Query(Counter);
+      var entries = [];
+      var $visitors = $(".leancloud_visitors");
+
+      $visitors.each(function () {
+        entries.push( $(this).attr("id").trim() );
+      });
+
+      query.containedIn('url', entries);
+      query.find()
+        .done(function (results) {
+          var COUNT_CONTAINER_REF = '.leancloud-visitors-count';
+
+          if (results.length === 0) {
+            $visitors.find(COUNT_CONTAINER_REF).text(0);
+            return;
+          }
+
+          for (var i = 0; i < results.length; i++) {
+            var item = results[i];
+            var url = item.get('url');
+            var time = item.get('time');
+            var element = document.getElementById(url);
+
+            $(element).find(COUNT_CONTAINER_REF).text(time);
+          }
+          for(var i = 0; i < entries.length; i++) {
+            var url = entries[i];
+            var element = document.getElementById(url);
+            var countSpan = $(element).find(COUNT_CONTAINER_REF);
+            if( countSpan.text() == '') {
+              countSpan.text(0);
+            }
+          }
+        })
+        .fail(function (object, error) {
+          console.log("Error: " + error.code + " " + error.message);
+        });
+    }
+
+    function addCount(Counter) {
+      var $visitors = $(".leancloud_visitors");
+      var url = $visitors.attr('id').trim();
+      var title = $visitors.attr('data-flag-title').trim();
+      var query = new AV.Query(Counter);
+
+      query.equalTo("url", url);
+      query.find({
+        success: function(results) {
+          if (results.length > 0) {
+            var counter = results[0];
+            counter.fetchWhenSave(true);
+            counter.increment("time");
+            
+            counter.save(null, {
+              success: function(counter) {
+                
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(counter.get('time'));
+                
+              },
+              error: function(counter, error) {
+                console.log('Failed to save Visitor num, with error message: ' + error.message);
+              }
+            });
+          } else {
+            
+              var newcounter = new Counter();
+              /* Set ACL */
+              var acl = new AV.ACL();
+              acl.setPublicReadAccess(true);
+              acl.setPublicWriteAccess(true);
+              newcounter.setACL(acl);
+              /* End Set ACL */
+              newcounter.set("title", title);
+              newcounter.set("url", url);
+              newcounter.set("time", 1);
+              newcounter.save(null, {
+                success: function(newcounter) {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(newcounter.get('time'));
+                },
+                error: function(newcounter, error) {
+                  console.log('Failed to create');
+                }
+              });
+            
+          }
+        },
+        error: function(error) {
+          console.log('Error:' + error.code + " " + error.message);
+        }
+      });
+    }
+
+    $(function() {
+      var Counter = AV.Object.extend("Counter");
+      if ($('.leancloud_visitors').length == 1) {
+        addCount(Counter);
+      } else if ($('.post-title-link').length > 1) {
+        showTime(Counter);
+      }
+    });
+  </script>
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+<script src="/live2dw/lib/L2Dwidget.min.js?094cbace49a39548bed64abff5988b05"></script><script>L2Dwidget.init({"pluginModelPath":"assets/","model":{"jsonPath":"/live2dw/assets/haru01.model.json"},"display":{"position":"right","width":150,"height":300},"mobile":{"show":false},"log":false,"pluginJsPath":"lib/","pluginRootPath":"live2dw/","tagMode":false});</script></body>
+</html>

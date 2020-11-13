@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.1.0" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.1.0">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.1.0" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '',
+    scheme: 'Gemini',
+    version: '6.1.0',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="这个数据结构分析的比较粗糙,因为实际使用的是redis2.8没有用这个结构.时间不够用了,先把代码粘过来Redis3.2版本新增数据结构代替原有的list的功能本质是一个双向链表,链表的节点是ziplist,而不是具体的值同时增加了压缩选项可已将ziplist数据进行压缩压缩算法为lzf算法与原始链表对比    - 原始链表定位特定元素时耗时较大    - 原始链表元素分散,容易产生较多内存碎片基">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis 源码分析-quicklist">
+<meta property="og:url" content="https://caticat.github.io/2018/05/09/redis-source-quicklist/index.html">
+<meta property="og:site_name" content="杂记">
+<meta property="og:description" content="这个数据结构分析的比较粗糙,因为实际使用的是redis2.8没有用这个结构.时间不够用了,先把代码粘过来Redis3.2版本新增数据结构代替原有的list的功能本质是一个双向链表,链表的节点是ziplist,而不是具体的值同时增加了压缩选项可已将ziplist数据进行压缩压缩算法为lzf算法与原始链表对比    - 原始链表定位特定元素时耗时较大    - 原始链表元素分散,容易产生较多内存碎片基">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2018-05-09T16:18:04.000Z">
+<meta property="article:modified_time" content="2020-11-13T04:01:07.415Z">
+<meta property="article:author" content="Pan">
+<meta property="article:tag" content="database">
+<meta property="article:tag" content="redis">
+<meta name="twitter:card" content="summary">
+
+
+
+
+
+
+  <link rel="canonical" href="https://caticat.github.io/2018/05/09/redis-source-quicklist/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Redis 源码分析-quicklist | 杂记</title>
+  
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"> 
+
+<div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">杂记</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle">不乱</p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+          
+  <li class="menu-item menu-item-home">
+    <a href="/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />首页</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-tags">
+    <a href="/tags/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-tags"></i> <br />标签</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-categories">
+    <a href="/categories/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />分类</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-archives">
+    <a href="/archives/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />归档</a>
+</li>
+
+      
+
+      
+        <li class="menu-item menu-item-search">
+          
+            <a href="javascript:;" class="popup-trigger">
+          
+            
+              <i class="menu-item-icon fa fa-search fa-fw"></i> <br />搜索</a>
+        </li>
+      
+    </ul>
+  
+
+  
+
+  
+    <div class="site-search">
+      
+  <div class="popup search-popup local-search-popup">
+  <div class="local-search-header clearfix">
+    <span class="search-icon">
+      <i class="fa fa-search"></i>
+    </span>
+    <span class="popup-btn-close">
+      <i class="fa fa-times-circle"></i>
+    </span>
+    <div class="local-search-input-wrapper">
+      <input autocomplete="off"
+             placeholder="搜索..." spellcheck="false"
+             type="text" id="local-search-input">
+    </div>
+  </div>
+  <div id="local-search-result"></div>
+</div>
+
+
+
+    </div>
+  
+</nav>
+
+
+  
+
+
+
+ </div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://caticat.github.io/2018/05/09/redis-source-quicklist/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/assets/images/avatar.png">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="杂记">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Redis 源码分析-quicklist</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2018-05-09T16:18:04+00:00">2018-05-09</time>
+            
+
+            
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/" itemprop="url" rel="index"><span itemprop="name">redis</span></a></span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/source/" itemprop="url" rel="index"><span itemprop="name">source</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+             <span id="/2018/05/09/redis-source-quicklist/" class="leancloud_visitors" data-flag-title="Redis 源码分析-quicklist">
+               <span class="post-meta-divider">|</span>
+               <span class="post-meta-item-icon">
+                 <i class="fa fa-eye"></i>
+               </span>
+               
+                 <span class="post-meta-item-text">阅读次数：</span>
+               
+                 <span class="leancloud-visitors-count"></span>
+             </span>
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p><strong>这个数据结构分析的比较粗糙,因为实际使用的是redis2.8没有用这个结构.时间不够用了,先把代码粘过来</strong><br>Redis3.2版本新增数据结构<br>代替原有的list的功能<br>本质是一个双向链表,<br>链表的节点是ziplist,<br>而不是具体的值<br>同时增加了压缩选项<br>可已将ziplist数据进行压缩<br>压缩算法为lzf算法<br>与原始链表对比<br>    - 原始链表定位特定元素时耗时较大<br>    - 原始链表元素分散,容易产生较多内存碎片<br>基本操作原理<br>向ql插入数据时<br>先获得头/尾的zl<br>当zl数量没有超过指定的zl元素数上限时<br>直接在zl中插入数据,<br>否则新建节点和空的zl,<br>然后再插入数据</p>
+<h2 id="相关文件"><a href="#相关文件" class="headerlink" title="相关文件"></a>相关文件</h2><ul>
+<li>quicklist.h</li>
+<li>quicklist.c<a id="more"></a>
+
+</li>
+</ul>
+<h2 id="相关概念"><a href="#相关概念" class="headerlink" title="相关概念"></a>相关概念</h2><ul>
+<li>likely/unlikely 分支预测<br>  简单说就是从内存取指令很慢,cpu要等待这个过程<br>  如果能提前预测可能执行的指令,就提前从内存把指令读到cache<br>  由于cache的访问速度较内存快.cpu要执行时就不用等很长时间了<br>  如果开发人员可以告诉编译器,<br>  哪个分支更有可能发生(likely)或者非常不可能发生(unlikely),<br>  可以帮助编译器进行代码编译</li>
+<li>数据的一般长度<br>  和系统位数,编译器有关,这里只是一般的情况(x64)<br>  类型 | 位数<br>  -|<br>  int | 4<br>  long | 8<br>  char* | 8</li>
+<li>数据对齐  <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">a</span> &#123;</span></span><br><span class="line">	<span class="keyword">int</span> a:<span class="number">8</span>;</span><br><span class="line">	<span class="keyword">int</span> b:<span class="number">8</span>;</span><br><span class="line">	<span class="keyword">int</span> c:<span class="number">16</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+  中<code>sizeof(struct a)</code>的长度实际就是一个<code>sizeof(int)</code>的长度<br>  其中<code>a.a</code>的范围是-128<del>127,<code>a.c</code>的范围是-2^15</del>2^15-1</li>
+</ul>
+<h2 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Node, quicklist, and Iterator are the only data structures used currently. */</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* quicklistNode is a 32 byte struct describing a ziplist for a quicklist.</span></span><br><span class="line"><span class="comment"> * We use bit fields keep the quicklistNode at 32 bytes.</span></span><br><span class="line"><span class="comment"> * count: 16 bits, max 65536 (max zl bytes is 65k, so max count actually &lt; 32k).</span></span><br><span class="line"><span class="comment"> * encoding: 2 bits, RAW=1, LZF=2.</span></span><br><span class="line"><span class="comment"> * container: 2 bits, NONE=1, ZIPLIST=2.</span></span><br><span class="line"><span class="comment"> * recompress: 1 bit, bool, true if node is temporarry decompressed for usage.</span></span><br><span class="line"><span class="comment"> * attempted_compress: 1 bit, boolean, used for verifying during testing.</span></span><br><span class="line"><span class="comment"> * extra: 12 bits, free for future use; pads out the remainder of 32 bits */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> &#123;</span> <span class="comment">// 节点</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> *<span class="title">prev</span>;</span> <span class="comment">// 前一个节点</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> *<span class="title">next</span>;</span> <span class="comment">// 后一个节点</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *zl; <span class="comment">// ziplist列表(压缩后是lzf数据)</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> sz;             <span class="comment">/* ziplist size in bytes */</span> <span class="comment">// ziplist的字节数</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> count : <span class="number">16</span>;     <span class="comment">/* count of items in ziplist */</span> <span class="comment">// ziplist的元素个数</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> encoding : <span class="number">2</span>;   <span class="comment">/* RAW==1 or LZF==2 */</span> <span class="comment">// zl的编码,是原始的ziplist还是lzf压缩后的数据</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> container : <span class="number">2</span>;  <span class="comment">/* NONE==1 or ZIPLIST==2 */</span> <span class="comment">// 数据存储方式,当前实际只有ziplist方式</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> recompress : <span class="number">1</span>; <span class="comment">/* was this node previous compressed? */</span> <span class="comment">// 解压标记,读取已压缩数据时需要先解压,读取,然后在恢复压缩</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> attempted_compress : <span class="number">1</span>; <span class="comment">/* node can&#x27;t compress; too small */</span> <span class="comment">// 尝试压缩,测试用</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> extra : <span class="number">10</span>; <span class="comment">/* more bits to steal for future usage */</span> <span class="comment">// 预留数据</span></span><br><span class="line">&#125; quicklistNode;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* quicklistLZF is a 4+N byte struct holding &#x27;sz&#x27; followed by &#x27;compressed&#x27;.</span></span><br><span class="line"><span class="comment"> * &#x27;sz&#x27; is byte length of &#x27;compressed&#x27; field.</span></span><br><span class="line"><span class="comment"> * &#x27;compressed&#x27; is LZF data with total (compressed) length &#x27;sz&#x27;</span></span><br><span class="line"><span class="comment"> * <span class="doctag">NOTE:</span> uncompressed length is stored in quicklistNode-&gt;sz.</span></span><br><span class="line"><span class="comment"> * When quicklistNode-&gt;zl is compressed, node-&gt;zl points to a quicklistLZF */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">quicklistLZF</span> &#123;</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> sz; <span class="comment">/* LZF size in bytes*/</span> <span class="comment">// 压缩后的字节数</span></span><br><span class="line">    <span class="keyword">char</span> compressed[]; <span class="comment">// 压缩数据</span></span><br><span class="line">&#125; quicklistLZF;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* quicklist is a 32 byte struct (on 64-bit systems) describing a quicklist.</span></span><br><span class="line"><span class="comment"> * &#x27;count&#x27; is the number of total entries.</span></span><br><span class="line"><span class="comment"> * &#x27;len&#x27; is the number of quicklist nodes.</span></span><br><span class="line"><span class="comment"> * &#x27;compress&#x27; is: -1 if compression disabled, otherwise it&#x27;s the number</span></span><br><span class="line"><span class="comment"> *                of quicklistNodes to leave uncompressed at ends of quicklist.</span></span><br><span class="line"><span class="comment"> * &#x27;fill&#x27; is the user-requested (or default) fill factor. */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">quicklist</span> &#123;</span></span><br><span class="line">    quicklistNode *head; <span class="comment">// 头元素</span></span><br><span class="line">    quicklistNode *tail; <span class="comment">// 尾元素</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> count;        <span class="comment">/* total count of all entries in all ziplists */</span> <span class="comment">// 所有ziplist的总共元素个数</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> len;           <span class="comment">/* number of quicklistNodes */</span> <span class="comment">// ziplist的数量</span></span><br><span class="line">    <span class="keyword">int</span> fill : <span class="number">16</span>;              <span class="comment">/* fill factor for individual nodes */</span> <span class="comment">// 每个ziplist可以存放的元素数</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> compress : <span class="number">16</span>; <span class="comment">/* depth of end nodes not to compress;0=off */</span> <span class="comment">// 链表头尾的前X个节点不进行lzf压缩,中间的节点的ziplist都进行压缩.0:关闭压缩功能</span></span><br><span class="line">&#125; quicklist;</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">quicklistIter</span> &#123;</span> <span class="comment">// 迭代器</span></span><br><span class="line">    <span class="keyword">const</span> quicklist *quicklist; <span class="comment">// 迭代的quicklist</span></span><br><span class="line">    quicklistNode *current; <span class="comment">// 当前迭代的节点</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *zi; <span class="comment">// 当前迭代的数据节点起始指针</span></span><br><span class="line">    <span class="keyword">long</span> offset; <span class="comment">/* offset in current ziplist */</span> <span class="comment">// 当前迭代的ziplist的偏移</span></span><br><span class="line">    <span class="keyword">int</span> direction; <span class="comment">// 方向</span></span><br><span class="line">&#125; quicklistIter;</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">quicklistEntry</span> &#123;</span> <span class="comment">// quicklist节点</span></span><br><span class="line">    <span class="keyword">const</span> quicklist *quicklist; <span class="comment">// 所在的quicklist</span></span><br><span class="line">    quicklistNode *node; <span class="comment">// 所在的节点</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *zi; <span class="comment">// 所在的ziplistEntry</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *value; <span class="comment">// 值,字符串</span></span><br><span class="line">    <span class="keyword">long</span> <span class="keyword">long</span> longval; <span class="comment">// 值,数字</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> sz; <span class="comment">// 所在的节点的字节大小</span></span><br><span class="line">    <span class="keyword">int</span> offset; <span class="comment">// 所在节点在ziplist的偏移</span></span><br><span class="line">&#125; quicklistEntry;</span><br></pre></td></tr></table></figure>
+
+<h2 id="主要宏"><a href="#主要宏" class="headerlink" title="主要宏"></a>主要宏</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> QUICKLIST_HEAD 0</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> QUICKLIST_TAIL -1</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* quicklist node encodings */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> QUICKLIST_NODE_ENCODING_RAW 1</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> QUICKLIST_NODE_ENCODING_LZF 2</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* quicklist compression disable */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> QUICKLIST_NOCOMPRESS 0</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* quicklist container formats */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> QUICKLIST_NODE_CONTAINER_NONE 1</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> QUICKLIST_NODE_CONTAINER_ZIPLIST 2</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> quicklistNodeIsCompressed(node)                                        \</span></span><br><span class="line">    ((node)-&gt;encoding == QUICKLIST_NODE_ENCODING_LZF)</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Maximum size in bytes of any multi-element ziplist.</span></span><br><span class="line"><span class="comment"> * Larger values will live in their own isolated ziplists. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SIZE_SAFETY_LIMIT 8192</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Minimum ziplist size in bytes for attempting compression. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MIN_COMPRESS_BYTES 48</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Minimum size reduction in bytes to store compressed quicklistNode data.</span></span><br><span class="line"><span class="comment"> * This also prevents us from storing compression if the compression</span></span><br><span class="line"><span class="comment"> * resulted in a larger size than the original data. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MIN_COMPRESS_IMPROVE 8</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Simple way to give quicklistEntry structs default values with one call. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> initEntry(e)                                                           \</span></span><br><span class="line">    <span class="keyword">do</span> &#123;                                                                       \</span><br><span class="line">        (e)-&gt;zi = (e)-&gt;value = <span class="literal">NULL</span>;                                           \</span><br><span class="line">        (e)-&gt;longval = <span class="number">-123456789</span>;                                             \</span><br><span class="line">        (e)-&gt;quicklist = <span class="literal">NULL</span>;                                                 \</span><br><span class="line">        (e)-&gt;node = <span class="literal">NULL</span>;                                                      \</span><br><span class="line">        (e)-&gt;offset = <span class="number">123456789</span>;                                               \</span><br><span class="line">        (e)-&gt;sz = <span class="number">0</span>;                                                           \</span><br><span class="line">    &#125; <span class="keyword">while</span> (<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<h2 id="函数分析"><a href="#函数分析" class="headerlink" title="函数分析"></a>函数分析</h2><h3 id="quicklist-quicklistCreate-void"><a href="#quicklist-quicklistCreate-void" class="headerlink" title="quicklist *quicklistCreate(void);"></a><code>quicklist *quicklistCreate(void);</code></h3><h4 id="功能"><a href="#功能" class="headerlink" title="功能"></a>功能</h4><p>创建一个空的quicklist</p>
+<h4 id="源码"><a href="#源码" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Create a new quicklist.</span></span><br><span class="line"><span class="comment"> * Free with quicklistRelease(). */</span></span><br><span class="line"><span class="function">quicklist *<span class="title">quicklistCreate</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">quicklist</span> *<span class="title">quicklist</span>;</span></span><br><span class="line"></span><br><span class="line">    quicklist = zmalloc(<span class="keyword">sizeof</span>(*quicklist));</span><br><span class="line">    quicklist-&gt;head = quicklist-&gt;tail = <span class="literal">NULL</span>;</span><br><span class="line">    quicklist-&gt;len = <span class="number">0</span>;</span><br><span class="line">    quicklist-&gt;count = <span class="number">0</span>;</span><br><span class="line">    quicklist-&gt;compress = <span class="number">0</span>;</span><br><span class="line">    quicklist-&gt;fill = <span class="number">-2</span>;</span><br><span class="line">    <span class="keyword">return</span> quicklist;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="REDIS-STATIC-quicklistNode-quicklistCreateNode-void"><a href="#REDIS-STATIC-quicklistNode-quicklistCreateNode-void" class="headerlink" title="REDIS_STATIC quicklistNode *quicklistCreateNode(void);"></a><code>REDIS_STATIC quicklistNode *quicklistCreateNode(void);</code></h3><h4 id="功能-1"><a href="#功能-1" class="headerlink" title="功能"></a>功能</h4><p>创建一个空的quicklist节点</p>
+<h4 id="源码-1"><a href="#源码-1" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">REDIS_STATIC quicklistNode *<span class="title">quicklistCreateNode</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    quicklistNode *node;</span><br><span class="line">    node = zmalloc(<span class="keyword">sizeof</span>(*node));</span><br><span class="line">    node-&gt;zl = <span class="literal">NULL</span>;</span><br><span class="line">    node-&gt;count = <span class="number">0</span>;</span><br><span class="line">    node-&gt;sz = <span class="number">0</span>;</span><br><span class="line">    node-&gt;next = node-&gt;prev = <span class="literal">NULL</span>;</span><br><span class="line">    node-&gt;encoding = QUICKLIST_NODE_ENCODING_RAW;</span><br><span class="line">    node-&gt;container = QUICKLIST_NODE_CONTAINER_ZIPLIST;</span><br><span class="line">    node-&gt;recompress = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">return</span> node;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-quicklistRelease-quicklist-quicklist"><a href="#void-quicklistRelease-quicklist-quicklist" class="headerlink" title="void quicklistRelease(quicklist *quicklist);"></a><code>void quicklistRelease(quicklist *quicklist);</code></h3><h4 id="功能-2"><a href="#功能-2" class="headerlink" title="功能"></a>功能</h4><p>释放完整的quicklist</p>
+<h4 id="源码-2"><a href="#源码-2" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Free entire quicklist. */</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">quicklistRelease</span><span class="params">(quicklist *quicklist)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> len;</span><br><span class="line">    quicklistNode *current, *next;</span><br><span class="line"></span><br><span class="line">    current = quicklist-&gt;head;</span><br><span class="line">    len = quicklist-&gt;len;</span><br><span class="line">    <span class="keyword">while</span> (len--) &#123;</span><br><span class="line">        next = current-&gt;next;</span><br><span class="line"></span><br><span class="line">        zfree(current-&gt;zl);</span><br><span class="line">        quicklist-&gt;count -= current-&gt;count;</span><br><span class="line"></span><br><span class="line">        zfree(current);</span><br><span class="line"></span><br><span class="line">        quicklist-&gt;len--;</span><br><span class="line">        current = next;</span><br><span class="line">    &#125;</span><br><span class="line">    zfree(quicklist);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="REDIS-STATIC-void-quicklistInsertNode-quicklist-quicklist-quicklistNode-old-node-quicklistNode-new-node-int-after"><a href="#REDIS-STATIC-void-quicklistInsertNode-quicklist-quicklist-quicklistNode-old-node-quicklistNode-new-node-int-after" class="headerlink" title="REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist, quicklistNode *old_node, quicklistNode *new_node, int after);"></a><code>REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist, quicklistNode *old_node, quicklistNode *new_node, int after);</code></h3><h4 id="功能-3"><a href="#功能-3" class="headerlink" title="功能"></a>功能</h4><p>quick在指定节点的前/后插入新的节点</p>
+<h4 id="源码-3"><a href="#源码-3" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Insert &#x27;new_node&#x27; after &#x27;old_node&#x27; if &#x27;after&#x27; is 1.</span></span><br><span class="line"><span class="comment"> * Insert &#x27;new_node&#x27; before &#x27;old_node&#x27; if &#x27;after&#x27; is 0.</span></span><br><span class="line"><span class="comment"> * Note: &#x27;new_node&#x27; is *always* uncompressed, so if we assign it to</span></span><br><span class="line"><span class="comment"> *       head or tail, we do not need to uncompress it. */</span></span><br><span class="line">REDIS_STATIC <span class="keyword">void</span> __quicklistInsertNode(quicklist *quicklist,</span><br><span class="line">                                        quicklistNode *old_node,</span><br><span class="line">                                        quicklistNode *new_node, <span class="keyword">int</span> after) &#123;</span><br><span class="line">    <span class="keyword">if</span> (after) &#123;</span><br><span class="line">        new_node-&gt;prev = old_node;</span><br><span class="line">        <span class="keyword">if</span> (old_node) &#123;</span><br><span class="line">            new_node-&gt;next = old_node-&gt;next;</span><br><span class="line">            <span class="keyword">if</span> (old_node-&gt;next)</span><br><span class="line">                old_node-&gt;next-&gt;prev = new_node;</span><br><span class="line">            old_node-&gt;next = new_node;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (quicklist-&gt;tail == old_node)</span><br><span class="line">            quicklist-&gt;tail = new_node;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        new_node-&gt;next = old_node;</span><br><span class="line">        <span class="keyword">if</span> (old_node) &#123;</span><br><span class="line">            new_node-&gt;prev = old_node-&gt;prev;</span><br><span class="line">            <span class="keyword">if</span> (old_node-&gt;prev)</span><br><span class="line">                old_node-&gt;prev-&gt;next = new_node;</span><br><span class="line">            old_node-&gt;prev = new_node;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (quicklist-&gt;head == old_node)</span><br><span class="line">            quicklist-&gt;head = new_node;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">/* If this insert creates the only element so far, initialize head/tail. */</span></span><br><span class="line">    <span class="keyword">if</span> (quicklist-&gt;len == <span class="number">0</span>) &#123;</span><br><span class="line">        quicklist-&gt;head = quicklist-&gt;tail = new_node;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (old_node)</span><br><span class="line">        quicklistCompress(quicklist, old_node);</span><br><span class="line"></span><br><span class="line">    quicklist-&gt;len++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="REDIS-STATIC-int-quicklistNodeAllowInsert-const-quicklistNode-node-const-int-fill-const-size-t-sz"><a href="#REDIS-STATIC-int-quicklistNodeAllowInsert-const-quicklistNode-node-const-int-fill-const-size-t-sz" class="headerlink" title="REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node, const int fill, const size_t sz);"></a><code>REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node, const int fill, const size_t sz);</code></h3><h4 id="功能-4"><a href="#功能-4" class="headerlink" title="功能"></a>功能</h4><p>节点中的ziplist是否还可以插入数据</p>
+<h4 id="源码-4"><a href="#源码-4" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SIZE_SAFETY_LIMIT 8192</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> sizeMeetsSafetyLimit(sz) ((sz) &lt;= SIZE_SAFETY_LIMIT)</span></span><br><span class="line"></span><br><span class="line">REDIS_STATIC <span class="keyword">int</span> _quicklistNodeAllowInsert(<span class="keyword">const</span> quicklistNode *node,</span><br><span class="line">                                           <span class="keyword">const</span> <span class="keyword">int</span> fill, <span class="keyword">const</span> <span class="keyword">size_t</span> sz) &#123;</span><br><span class="line">    <span class="keyword">if</span> (unlikely(!node))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> ziplist_overhead;</span><br><span class="line">    <span class="comment">/* size of previous offset */</span></span><br><span class="line">    <span class="keyword">if</span> (sz &lt; <span class="number">254</span>)</span><br><span class="line">        ziplist_overhead = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        ziplist_overhead = <span class="number">5</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* size of forward offset */</span></span><br><span class="line">    <span class="keyword">if</span> (sz &lt; <span class="number">64</span>)</span><br><span class="line">        ziplist_overhead += <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (likely(sz &lt; <span class="number">16384</span>))</span><br><span class="line">        ziplist_overhead += <span class="number">2</span>;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        ziplist_overhead += <span class="number">5</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* new_sz overestimates if &#x27;sz&#x27; encodes to an integer type */</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> new_sz = node-&gt;sz + sz + ziplist_overhead;</span><br><span class="line">    <span class="keyword">if</span> (likely(_quicklistNodeSizeMeetsOptimizationRequirement(new_sz, fill)))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (!sizeMeetsSafetyLimit(new_sz))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> ((<span class="keyword">int</span>)node-&gt;count &lt; fill)</span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-quicklistPushHead-quicklist-quicklist-void-value-size-t-sz"><a href="#int-quicklistPushHead-quicklist-quicklist-void-value-size-t-sz" class="headerlink" title="int quicklistPushHead(quicklist *quicklist, void *value, size_t sz);"></a><code>int quicklistPushHead(quicklist *quicklist, void *value, size_t sz);</code></h3><h4 id="功能-5"><a href="#功能-5" class="headerlink" title="功能"></a>功能</h4><p>在前面插入新的数据</p>
+<h4 id="源码-5"><a href="#源码-5" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Add new entry to head node of quicklist.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Returns 0 if used existing head.</span></span><br><span class="line"><span class="comment"> * Returns 1 if new head created. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">quicklistPushHead</span><span class="params">(quicklist *quicklist, <span class="keyword">void</span> *value, <span class="keyword">size_t</span> sz)</span> </span>&#123;</span><br><span class="line">    quicklistNode *orig_head = quicklist-&gt;head;</span><br><span class="line">    <span class="keyword">if</span> (likely(</span><br><span class="line">            _quicklistNodeAllowInsert(quicklist-&gt;head, quicklist-&gt;fill, sz))) &#123;</span><br><span class="line">        quicklist-&gt;head-&gt;zl =</span><br><span class="line">            ziplistPush(quicklist-&gt;head-&gt;zl, value, sz, ZIPLIST_HEAD);</span><br><span class="line">        quicklistNodeUpdateSz(quicklist-&gt;head);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        quicklistNode *node = quicklistCreateNode();</span><br><span class="line">        node-&gt;zl = ziplistPush(ziplistNew(), value, sz, ZIPLIST_HEAD);</span><br><span class="line"></span><br><span class="line">        quicklistNodeUpdateSz(node);</span><br><span class="line">        _quicklistInsertNodeBefore(quicklist, quicklist-&gt;head, node);</span><br><span class="line">    &#125;</span><br><span class="line">    quicklist-&gt;count++;</span><br><span class="line">    quicklist-&gt;head-&gt;count++;</span><br><span class="line">    <span class="keyword">return</span> (orig_head != quicklist-&gt;head);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-quicklistPushTail-quicklist-quicklist-void-value-size-t-sz"><a href="#int-quicklistPushTail-quicklist-quicklist-void-value-size-t-sz" class="headerlink" title="int quicklistPushTail(quicklist *quicklist, void *value, size_t sz);"></a><code>int quicklistPushTail(quicklist *quicklist, void *value, size_t sz);</code></h3><h4 id="功能-6"><a href="#功能-6" class="headerlink" title="功能"></a>功能</h4><p>在结尾插入新的数据</p>
+<h4 id="源码-6"><a href="#源码-6" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Add new entry to tail node of quicklist.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Returns 0 if used existing tail.</span></span><br><span class="line"><span class="comment"> * Returns 1 if new tail created. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">quicklistPushTail</span><span class="params">(quicklist *quicklist, <span class="keyword">void</span> *value, <span class="keyword">size_t</span> sz)</span> </span>&#123;</span><br><span class="line">    quicklistNode *orig_tail = quicklist-&gt;tail;</span><br><span class="line">    <span class="keyword">if</span> (likely(</span><br><span class="line">            _quicklistNodeAllowInsert(quicklist-&gt;tail, quicklist-&gt;fill, sz))) &#123;</span><br><span class="line">        quicklist-&gt;tail-&gt;zl =</span><br><span class="line">            ziplistPush(quicklist-&gt;tail-&gt;zl, value, sz, ZIPLIST_TAIL);</span><br><span class="line">        quicklistNodeUpdateSz(quicklist-&gt;tail);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        quicklistNode *node = quicklistCreateNode();</span><br><span class="line">        node-&gt;zl = ziplistPush(ziplistNew(), value, sz, ZIPLIST_TAIL);</span><br><span class="line"></span><br><span class="line">        quicklistNodeUpdateSz(node);</span><br><span class="line">        _quicklistInsertNodeAfter(quicklist, quicklist-&gt;tail, node);</span><br><span class="line">    &#125;</span><br><span class="line">    quicklist-&gt;count++;</span><br><span class="line">    quicklist-&gt;tail-&gt;count++;</span><br><span class="line">    <span class="keyword">return</span> (orig_tail != quicklist-&gt;tail);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="REDIS-STATIC-void-quicklistDelNode-quicklist-quicklist-quicklistNode-node"><a href="#REDIS-STATIC-void-quicklistDelNode-quicklist-quicklist-quicklistNode-node" class="headerlink" title="REDIS_STATIC void __quicklistDelNode(quicklist *quicklist, quicklistNode *node);"></a><code>REDIS_STATIC void __quicklistDelNode(quicklist *quicklist, quicklistNode *node);</code></h3><h4 id="功能-7"><a href="#功能-7" class="headerlink" title="功能"></a>功能</h4><p>删除节点</p>
+<h4 id="源码-7"><a href="#源码-7" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">REDIS_STATIC <span class="keyword">void</span> __quicklistDelNode(quicklist *quicklist,</span><br><span class="line">                                     quicklistNode *node) &#123;</span><br><span class="line">    <span class="keyword">if</span> (node-&gt;next)</span><br><span class="line">        node-&gt;next-&gt;prev = node-&gt;prev;</span><br><span class="line">    <span class="keyword">if</span> (node-&gt;prev)</span><br><span class="line">        node-&gt;prev-&gt;next = node-&gt;next;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (node == quicklist-&gt;tail) &#123;</span><br><span class="line">        quicklist-&gt;tail = node-&gt;prev;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (node == quicklist-&gt;head) &#123;</span><br><span class="line">        quicklist-&gt;head = node-&gt;next;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* If we deleted a node within our compress depth, we</span></span><br><span class="line"><span class="comment">     * now have compressed nodes needing to be decompressed. */</span></span><br><span class="line">    __quicklistCompress(quicklist, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">    quicklist-&gt;count -= node-&gt;count;</span><br><span class="line"></span><br><span class="line">    zfree(node-&gt;zl);</span><br><span class="line">    zfree(node);</span><br><span class="line">    quicklist-&gt;len--;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="REDIS-STATIC-int-quicklistDelIndex-quicklist-quicklist-quicklistNode-node-unsigned-char-p"><a href="#REDIS-STATIC-int-quicklistDelIndex-quicklist-quicklist-quicklistNode-node-unsigned-char-p" class="headerlink" title="REDIS_STATIC int quicklistDelIndex(quicklist *quicklist, quicklistNode *node, unsigned char **p);"></a><code>REDIS_STATIC int quicklistDelIndex(quicklist *quicklist, quicklistNode *node, unsigned char **p);</code></h3><h4 id="功能-8"><a href="#功能-8" class="headerlink" title="功能"></a>功能</h4><p>删除指定节点的元素</p>
+<h4 id="源码-8"><a href="#源码-8" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Delete one entry from list given the node for the entry and a pointer</span></span><br><span class="line"><span class="comment"> * to the entry in the node.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Note: quicklistDelIndex() *requires* uncompressed nodes because you</span></span><br><span class="line"><span class="comment"> *       already had to get *p from an uncompressed node somewhere.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Returns 1 if the entire node was deleted, 0 if node still exists.</span></span><br><span class="line"><span class="comment"> * Also updates in/out param &#x27;p&#x27; with the next offset in the ziplist. */</span></span><br><span class="line"><span class="function">REDIS_STATIC <span class="keyword">int</span> <span class="title">quicklistDelIndex</span><span class="params">(quicklist *quicklist, quicklistNode *node,</span></span></span><br><span class="line"><span class="function"><span class="params">                                   <span class="keyword">unsigned</span> <span class="keyword">char</span> **p)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> gone = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    node-&gt;zl = ziplistDelete(node-&gt;zl, p);</span><br><span class="line">    node-&gt;count--;</span><br><span class="line">    <span class="keyword">if</span> (node-&gt;count == <span class="number">0</span>) &#123;</span><br><span class="line">        gone = <span class="number">1</span>;</span><br><span class="line">        __quicklistDelNode(quicklist, node);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        quicklistNodeUpdateSz(node);</span><br><span class="line">    &#125;</span><br><span class="line">    quicklist-&gt;count--;</span><br><span class="line">    <span class="comment">/* If we deleted the node, the original node is no longer valid */</span></span><br><span class="line">    <span class="keyword">return</span> gone ? <span class="number">1</span> : <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-quicklistDelEntry-quicklistIter-iter-quicklistEntry-entry"><a href="#void-quicklistDelEntry-quicklistIter-iter-quicklistEntry-entry" class="headerlink" title="void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry);"></a><code>void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry);</code></h3><h4 id="功能-9"><a href="#功能-9" class="headerlink" title="功能"></a>功能</h4><p>删除指定entry</p>
+<h4 id="源码-9"><a href="#源码-9" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Delete one element represented by &#x27;entry&#x27;</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * &#x27;entry&#x27; stores enough metadata to delete the proper position in</span></span><br><span class="line"><span class="comment"> * the correct ziplist in the correct quicklist node. */</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">quicklistDelEntry</span><span class="params">(quicklistIter *iter, quicklistEntry *entry)</span> </span>&#123;</span><br><span class="line">    quicklistNode *prev = entry-&gt;node-&gt;prev;</span><br><span class="line">    quicklistNode *next = entry-&gt;node-&gt;next;</span><br><span class="line">    <span class="keyword">int</span> deleted_node = quicklistDelIndex((quicklist *)entry-&gt;quicklist,</span><br><span class="line">                                         entry-&gt;node, &amp;entry-&gt;zi);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* after delete, the zi is now invalid for any future usage. */</span></span><br><span class="line">    iter-&gt;zi = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* If current node is deleted, we must update iterator node and offset. */</span></span><br><span class="line">    <span class="keyword">if</span> (deleted_node) &#123;</span><br><span class="line">        <span class="keyword">if</span> (iter-&gt;direction == AL_START_HEAD) &#123;</span><br><span class="line">            iter-&gt;current = next;</span><br><span class="line">            iter-&gt;offset = <span class="number">0</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (iter-&gt;direction == AL_START_TAIL) &#123;</span><br><span class="line">            iter-&gt;current = prev;</span><br><span class="line">            iter-&gt;offset = <span class="number">-1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">/* else if (!deleted_node), no changes needed.</span></span><br><span class="line"><span class="comment">     * we already reset iter-&gt;zi above, and the existing iter-&gt;offset</span></span><br><span class="line"><span class="comment">     * doesn&#x27;t move again because:</span></span><br><span class="line"><span class="comment">     *   - [1, 2, 3] =&gt; delete offset 1 =&gt; [1, 3]: next element still offset 1</span></span><br><span class="line"><span class="comment">     *   - [1, 2, 3] =&gt; delete offset 0 =&gt; [2, 3]: next element still offset 0</span></span><br><span class="line"><span class="comment">     *  if we deleted the last element at offet N and now</span></span><br><span class="line"><span class="comment">     *  length of this ziplist is N-1, the next call into</span></span><br><span class="line"><span class="comment">     *  quicklistNext() will jump to the next node. */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="REDIS-STATIC-void-quicklistInsert-quicklist-quicklist-quicklistEntry-entry-void-value-const-size-t-sz-int-after"><a href="#REDIS-STATIC-void-quicklistInsert-quicklist-quicklist-quicklistEntry-entry-void-value-const-size-t-sz-int-after" class="headerlink" title="REDIS_STATIC void _quicklistInsert(quicklist *quicklist, quicklistEntry *entry, void *value, const size_t sz, int after);"></a><code>REDIS_STATIC void _quicklistInsert(quicklist *quicklist, quicklistEntry *entry, void *value, const size_t sz, int after);</code></h3><h4 id="功能-10"><a href="#功能-10" class="headerlink" title="功能"></a>功能</h4><p>插入一个新数据</p>
+<h4 id="源码-10"><a href="#源码-10" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Insert a new entry before or after existing entry &#x27;entry&#x27;.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * If after==1, the new value is inserted after &#x27;entry&#x27;, otherwise</span></span><br><span class="line"><span class="comment"> * the new value is inserted before &#x27;entry&#x27;. */</span></span><br><span class="line">REDIS_STATIC <span class="keyword">void</span> _quicklistInsert(quicklist *quicklist, quicklistEntry *entry,</span><br><span class="line">                                   <span class="keyword">void</span> *value, <span class="keyword">const</span> <span class="keyword">size_t</span> sz, <span class="keyword">int</span> after) &#123;</span><br><span class="line">    <span class="keyword">int</span> full = <span class="number">0</span>, at_tail = <span class="number">0</span>, at_head = <span class="number">0</span>, full_next = <span class="number">0</span>, full_prev = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> fill = quicklist-&gt;fill;</span><br><span class="line">    quicklistNode *node = entry-&gt;node;</span><br><span class="line">    quicklistNode *new_node = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!node) &#123;</span><br><span class="line">        <span class="comment">/* we have no reference node, so let&#x27;s create only node in the list */</span></span><br><span class="line">        D(<span class="string">&quot;No node given!&quot;</span>);</span><br><span class="line">        new_node = quicklistCreateNode();</span><br><span class="line">        new_node-&gt;zl = ziplistPush(ziplistNew(), value, sz, ZIPLIST_HEAD);</span><br><span class="line">        __quicklistInsertNode(quicklist, <span class="literal">NULL</span>, new_node, after);</span><br><span class="line">        new_node-&gt;count++;</span><br><span class="line">        quicklist-&gt;count++;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Populate accounting flags for easier boolean checks later */</span></span><br><span class="line">    <span class="keyword">if</span> (!_quicklistNodeAllowInsert(node, fill, sz)) &#123;</span><br><span class="line">        D(<span class="string">&quot;Current node is full with count %d with requested fill %lu&quot;</span>,</span><br><span class="line">          node-&gt;count, fill);</span><br><span class="line">        full = <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (after &amp;&amp; (entry-&gt;offset == node-&gt;count)) &#123;</span><br><span class="line">        D(<span class="string">&quot;At Tail of current ziplist&quot;</span>);</span><br><span class="line">        at_tail = <span class="number">1</span>;</span><br><span class="line">        <span class="keyword">if</span> (!_quicklistNodeAllowInsert(node-&gt;next, fill, sz)) &#123;</span><br><span class="line">            D(<span class="string">&quot;Next node is full too.&quot;</span>);</span><br><span class="line">            full_next = <span class="number">1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!after &amp;&amp; (entry-&gt;offset == <span class="number">0</span>)) &#123;</span><br><span class="line">        D(<span class="string">&quot;At Head&quot;</span>);</span><br><span class="line">        at_head = <span class="number">1</span>;</span><br><span class="line">        <span class="keyword">if</span> (!_quicklistNodeAllowInsert(node-&gt;prev, fill, sz)) &#123;</span><br><span class="line">            D(<span class="string">&quot;Prev node is full too.&quot;</span>);</span><br><span class="line">            full_prev = <span class="number">1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Now determine where and how to insert the new element */</span></span><br><span class="line">    <span class="keyword">if</span> (!full &amp;&amp; after) &#123;</span><br><span class="line">        D(<span class="string">&quot;Not full, inserting after current position.&quot;</span>);</span><br><span class="line">        quicklistDecompressNodeForUse(node);</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">char</span> *next = ziplistNext(node-&gt;zl, entry-&gt;zi);</span><br><span class="line">        <span class="keyword">if</span> (next == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            node-&gt;zl = ziplistPush(node-&gt;zl, value, sz, ZIPLIST_TAIL);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            node-&gt;zl = ziplistInsert(node-&gt;zl, next, value, sz);</span><br><span class="line">        &#125;</span><br><span class="line">        node-&gt;count++;</span><br><span class="line">        quicklistNodeUpdateSz(node);</span><br><span class="line">        quicklistRecompressOnly(quicklist, node);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (!full &amp;&amp; !after) &#123;</span><br><span class="line">        D(<span class="string">&quot;Not full, inserting before current position.&quot;</span>);</span><br><span class="line">        quicklistDecompressNodeForUse(node);</span><br><span class="line">        node-&gt;zl = ziplistInsert(node-&gt;zl, entry-&gt;zi, value, sz);</span><br><span class="line">        node-&gt;count++;</span><br><span class="line">        quicklistNodeUpdateSz(node);</span><br><span class="line">        quicklistRecompressOnly(quicklist, node);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (full &amp;&amp; at_tail &amp;&amp; node-&gt;next &amp;&amp; !full_next &amp;&amp; after) &#123;</span><br><span class="line">        <span class="comment">/* If we are: at tail, next has free space, and inserting after:</span></span><br><span class="line"><span class="comment">         *   - insert entry at head of next node. */</span></span><br><span class="line">        D(<span class="string">&quot;Full and tail, but next isn&#x27;t full; inserting next node head&quot;</span>);</span><br><span class="line">        new_node = node-&gt;next;</span><br><span class="line">        quicklistDecompressNodeForUse(new_node);</span><br><span class="line">        new_node-&gt;zl = ziplistPush(new_node-&gt;zl, value, sz, ZIPLIST_HEAD);</span><br><span class="line">        new_node-&gt;count++;</span><br><span class="line">        quicklistNodeUpdateSz(new_node);</span><br><span class="line">        quicklistRecompressOnly(quicklist, new_node);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (full &amp;&amp; at_head &amp;&amp; node-&gt;prev &amp;&amp; !full_prev &amp;&amp; !after) &#123;</span><br><span class="line">        <span class="comment">/* If we are: at head, previous has free space, and inserting before:</span></span><br><span class="line"><span class="comment">         *   - insert entry at tail of previous node. */</span></span><br><span class="line">        D(<span class="string">&quot;Full and head, but prev isn&#x27;t full, inserting prev node tail&quot;</span>);</span><br><span class="line">        new_node = node-&gt;prev;</span><br><span class="line">        quicklistDecompressNodeForUse(new_node);</span><br><span class="line">        new_node-&gt;zl = ziplistPush(new_node-&gt;zl, value, sz, ZIPLIST_TAIL);</span><br><span class="line">        new_node-&gt;count++;</span><br><span class="line">        quicklistNodeUpdateSz(new_node);</span><br><span class="line">        quicklistRecompressOnly(quicklist, new_node);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (full &amp;&amp; ((at_tail &amp;&amp; node-&gt;next &amp;&amp; full_next &amp;&amp; after) ||</span><br><span class="line">                        (at_head &amp;&amp; node-&gt;prev &amp;&amp; full_prev &amp;&amp; !after))) &#123;</span><br><span class="line">        <span class="comment">/* If we are: full, and our prev/next is full, then:</span></span><br><span class="line"><span class="comment">         *   - create new node and attach to quicklist */</span></span><br><span class="line">        D(<span class="string">&quot;\tprovisioning new node...&quot;</span>);</span><br><span class="line">        new_node = quicklistCreateNode();</span><br><span class="line">        new_node-&gt;zl = ziplistPush(ziplistNew(), value, sz, ZIPLIST_HEAD);</span><br><span class="line">        new_node-&gt;count++;</span><br><span class="line">        quicklistNodeUpdateSz(new_node);</span><br><span class="line">        __quicklistInsertNode(quicklist, node, new_node, after);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (full) &#123;</span><br><span class="line">        <span class="comment">/* else, node is full we need to split it. */</span></span><br><span class="line">        <span class="comment">/* covers both after and !after cases */</span></span><br><span class="line">        D(<span class="string">&quot;\tsplitting node...&quot;</span>);</span><br><span class="line">        quicklistDecompressNodeForUse(node);</span><br><span class="line">        new_node = _quicklistSplitNode(node, entry-&gt;offset, after);</span><br><span class="line">        new_node-&gt;zl = ziplistPush(new_node-&gt;zl, value, sz,</span><br><span class="line">                                   after ? ZIPLIST_HEAD : ZIPLIST_TAIL);</span><br><span class="line">        new_node-&gt;count++;</span><br><span class="line">        quicklistNodeUpdateSz(new_node);</span><br><span class="line">        __quicklistInsertNode(quicklist, node, new_node, after);</span><br><span class="line">        _quicklistMergeNodes(quicklist, node);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    quicklist-&gt;count++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="quicklistIter-quicklistGetIterator-const-quicklist-quicklist-int-direction"><a href="#quicklistIter-quicklistGetIterator-const-quicklist-quicklist-int-direction" class="headerlink" title="quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction);"></a><code>quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction);</code></h3><h4 id="功能-11"><a href="#功能-11" class="headerlink" title="功能"></a>功能</h4><p>获取迭代器</p>
+<h4 id="源码-11"><a href="#源码-11" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Returns a quicklist iterator &#x27;iter&#x27;. After the initialization every</span></span><br><span class="line"><span class="comment"> * call to quicklistNext() will return the next element of the quicklist. */</span></span><br><span class="line"><span class="function">quicklistIter *<span class="title">quicklistGetIterator</span><span class="params">(<span class="keyword">const</span> quicklist *quicklist, <span class="keyword">int</span> direction)</span> </span>&#123;</span><br><span class="line">    quicklistIter *iter;</span><br><span class="line"></span><br><span class="line">    iter = zmalloc(<span class="keyword">sizeof</span>(*iter));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (direction == AL_START_HEAD) &#123;</span><br><span class="line">        iter-&gt;current = quicklist-&gt;head;</span><br><span class="line">        iter-&gt;offset = <span class="number">0</span>;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (direction == AL_START_TAIL) &#123;</span><br><span class="line">        iter-&gt;current = quicklist-&gt;tail;</span><br><span class="line">        iter-&gt;offset = <span class="number">-1</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    iter-&gt;direction = direction;</span><br><span class="line">    iter-&gt;quicklist = quicklist;</span><br><span class="line"></span><br><span class="line">    iter-&gt;zi = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> iter;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="quicklistIter-quicklistGetIteratorAtIdx-const-quicklist-quicklist-const-int-direction-const-long-long-idx"><a href="#quicklistIter-quicklistGetIteratorAtIdx-const-quicklist-quicklist-const-int-direction-const-long-long-idx" class="headerlink" title="quicklistIter *quicklistGetIteratorAtIdx(const quicklist *quicklist, const int direction, const long long idx);"></a><code>quicklistIter *quicklistGetIteratorAtIdx(const quicklist *quicklist, const int direction, const long long idx);</code></h3><h4 id="功能-12"><a href="#功能-12" class="headerlink" title="功能"></a>功能</h4><p>获取指定位置的迭代器</p>
+<h4 id="源码-12"><a href="#源码-12" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Initialize an iterator at a specific offset &#x27;idx&#x27; and make the iterator</span></span><br><span class="line"><span class="comment"> * return nodes in &#x27;direction&#x27; direction. */</span></span><br><span class="line"><span class="function">quicklistIter *<span class="title">quicklistGetIteratorAtIdx</span><span class="params">(<span class="keyword">const</span> quicklist *quicklist,</span></span></span><br><span class="line"><span class="function"><span class="params">                                         <span class="keyword">const</span> <span class="keyword">int</span> direction,</span></span></span><br><span class="line"><span class="function"><span class="params">                                         <span class="keyword">const</span> <span class="keyword">long</span> <span class="keyword">long</span> idx)</span> </span>&#123;</span><br><span class="line">    quicklistEntry entry;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (quicklistIndex(quicklist, idx, &amp;entry)) &#123;</span><br><span class="line">        quicklistIter *base = quicklistGetIterator(quicklist, direction);</span><br><span class="line">        base-&gt;zi = <span class="literal">NULL</span>;</span><br><span class="line">        base-&gt;current = entry.node;</span><br><span class="line">        base-&gt;offset = entry.offset;</span><br><span class="line">        <span class="keyword">return</span> base;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-quicklistNext-quicklistIter-iter-quicklistEntry-entry"><a href="#int-quicklistNext-quicklistIter-iter-quicklistEntry-entry" class="headerlink" title="int quicklistNext(quicklistIter *iter, quicklistEntry *entry);"></a><code>int quicklistNext(quicklistIter *iter, quicklistEntry *entry);</code></h3><h4 id="功能-13"><a href="#功能-13" class="headerlink" title="功能"></a>功能</h4><p>迭代元素</p>
+<h4 id="源码-13"><a href="#源码-13" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Get next element in iterator.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Note: You must NOT insert into the list while iterating over it.</span></span><br><span class="line"><span class="comment"> * You *may* delete from the list while iterating using the</span></span><br><span class="line"><span class="comment"> * quicklistDelEntry() function.</span></span><br><span class="line"><span class="comment"> * If you insert into the quicklist while iterating, you should</span></span><br><span class="line"><span class="comment"> * re-create the iterator after your addition.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * iter = quicklistGetIterator(quicklist,&lt;direction&gt;);</span></span><br><span class="line"><span class="comment"> * quicklistEntry entry;</span></span><br><span class="line"><span class="comment"> * while (quicklistNext(iter, &amp;entry)) &#123;</span></span><br><span class="line"><span class="comment"> *     if (entry.value)</span></span><br><span class="line"><span class="comment"> *          [[ use entry.value with entry.sz ]]</span></span><br><span class="line"><span class="comment"> *     else</span></span><br><span class="line"><span class="comment"> *          [[ use entry.longval ]]</span></span><br><span class="line"><span class="comment"> * &#125;</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Populates &#x27;entry&#x27; with values for this iteration.</span></span><br><span class="line"><span class="comment"> * Returns 0 when iteration is complete or if iteration not possible.</span></span><br><span class="line"><span class="comment"> * If return value is 0, the contents of &#x27;entry&#x27; are not valid.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">quicklistNext</span><span class="params">(quicklistIter *iter, quicklistEntry *entry)</span> </span>&#123;</span><br><span class="line">    initEntry(entry);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!iter) &#123;</span><br><span class="line">        D(<span class="string">&quot;Returning because no iter!&quot;</span>);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    entry-&gt;quicklist = iter-&gt;quicklist;</span><br><span class="line">    entry-&gt;node = iter-&gt;current;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!iter-&gt;current) &#123;</span><br><span class="line">        D(<span class="string">&quot;Returning because current node is NULL&quot;</span>)</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *(*nextFn)(<span class="keyword">unsigned</span> <span class="keyword">char</span> *, <span class="keyword">unsigned</span> <span class="keyword">char</span> *) = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="keyword">int</span> offset_update = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!iter-&gt;zi) &#123;</span><br><span class="line">        <span class="comment">/* If !zi, use current index. */</span></span><br><span class="line">        quicklistDecompressNodeForUse(iter-&gt;current);</span><br><span class="line">        iter-&gt;zi = ziplistIndex(iter-&gt;current-&gt;zl, iter-&gt;offset);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* else, use existing iterator offset and get prev/next as necessary. */</span></span><br><span class="line">        <span class="keyword">if</span> (iter-&gt;direction == AL_START_HEAD) &#123;</span><br><span class="line">            nextFn = ziplistNext;</span><br><span class="line">            offset_update = <span class="number">1</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (iter-&gt;direction == AL_START_TAIL) &#123;</span><br><span class="line">            nextFn = ziplistPrev;</span><br><span class="line">            offset_update = <span class="number">-1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        iter-&gt;zi = nextFn(iter-&gt;current-&gt;zl, iter-&gt;zi);</span><br><span class="line">        iter-&gt;offset += offset_update;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    entry-&gt;zi = iter-&gt;zi;</span><br><span class="line">    entry-&gt;offset = iter-&gt;offset;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (iter-&gt;zi) &#123;</span><br><span class="line">        <span class="comment">/* Populate value from existing ziplist position */</span></span><br><span class="line">        ziplistGet(entry-&gt;zi, &amp;entry-&gt;value, &amp;entry-&gt;sz, &amp;entry-&gt;longval);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* We ran out of ziplist entries.</span></span><br><span class="line"><span class="comment">         * Pick next node, update offset, then re-run retrieval. */</span></span><br><span class="line">        quicklistCompress(iter-&gt;quicklist, iter-&gt;current);</span><br><span class="line">        <span class="keyword">if</span> (iter-&gt;direction == AL_START_HEAD) &#123;</span><br><span class="line">            <span class="comment">/* Forward traversal */</span></span><br><span class="line">            D(<span class="string">&quot;Jumping to start of next node&quot;</span>);</span><br><span class="line">            iter-&gt;current = iter-&gt;current-&gt;next;</span><br><span class="line">            iter-&gt;offset = <span class="number">0</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (iter-&gt;direction == AL_START_TAIL) &#123;</span><br><span class="line">            <span class="comment">/* Reverse traversal */</span></span><br><span class="line">            D(<span class="string">&quot;Jumping to end of previous node&quot;</span>);</span><br><span class="line">            iter-&gt;current = iter-&gt;current-&gt;prev;</span><br><span class="line">            iter-&gt;offset = <span class="number">-1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        iter-&gt;zi = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="keyword">return</span> quicklistNext(iter, entry);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="quicklist-quicklistDup-quicklist-orig"><a href="#quicklist-quicklistDup-quicklist-orig" class="headerlink" title="quicklist *quicklistDup(quicklist *orig);"></a><code>quicklist *quicklistDup(quicklist *orig);</code></h3><h4 id="功能-14"><a href="#功能-14" class="headerlink" title="功能"></a>功能</h4><p>复制</p>
+<h4 id="源码-14"><a href="#源码-14" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Duplicate the quicklist.</span></span><br><span class="line"><span class="comment"> * On success a copy of the original quicklist is returned.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * The original quicklist both on success or error is never modified.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Returns newly allocated quicklist. */</span></span><br><span class="line"><span class="function">quicklist *<span class="title">quicklistDup</span><span class="params">(quicklist *orig)</span> </span>&#123;</span><br><span class="line">    quicklist *copy;</span><br><span class="line"></span><br><span class="line">    copy = quicklistNew(orig-&gt;fill, orig-&gt;compress);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (quicklistNode *current = orig-&gt;head; current;</span><br><span class="line">         current = current-&gt;next) &#123;</span><br><span class="line">        quicklistNode *node = quicklistCreateNode();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (node-&gt;encoding == QUICKLIST_NODE_ENCODING_LZF) &#123;</span><br><span class="line">            quicklistLZF *lzf = (quicklistLZF *)node-&gt;zl;</span><br><span class="line">            <span class="keyword">size_t</span> lzf_sz = <span class="keyword">sizeof</span>(*lzf) + lzf-&gt;sz;</span><br><span class="line">            node-&gt;zl = zmalloc(lzf_sz);</span><br><span class="line">            <span class="built_in">memcpy</span>(node-&gt;zl, current-&gt;zl, lzf_sz);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (node-&gt;encoding == QUICKLIST_NODE_ENCODING_RAW) &#123;</span><br><span class="line">            node-&gt;zl = zmalloc(current-&gt;sz);</span><br><span class="line">            <span class="built_in">memcpy</span>(node-&gt;zl, current-&gt;zl, current-&gt;sz);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        node-&gt;count = current-&gt;count;</span><br><span class="line">        copy-&gt;count += node-&gt;count;</span><br><span class="line">        node-&gt;sz = current-&gt;sz;</span><br><span class="line">        node-&gt;encoding = current-&gt;encoding;</span><br><span class="line"></span><br><span class="line">        _quicklistInsertNodeAfter(copy, copy-&gt;tail, node);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* copy-&gt;count must equal orig-&gt;count here */</span></span><br><span class="line">    <span class="keyword">return</span> copy;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-quicklistPopCustom-quicklist-quicklist-int-where-unsigned-char-data-unsigned-int-sz-long-long-sval-void-saver-unsigned-char-data-unsigned-int-sz"><a href="#int-quicklistPopCustom-quicklist-quicklist-int-where-unsigned-char-data-unsigned-int-sz-long-long-sval-void-saver-unsigned-char-data-unsigned-int-sz" class="headerlink" title="int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *sval, void *(*saver)(unsigned char *data, unsigned int sz));"></a><code>int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *sval, void *(*saver)(unsigned char *data, unsigned int sz));</code></h3><h4 id="功能-15"><a href="#功能-15" class="headerlink" title="功能"></a>功能</h4><p>取出一个元素并从quicklist中去除</p>
+<h4 id="源码-15"><a href="#源码-15" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* pop from quicklist and return result in &#x27;data&#x27; ptr.  Value of &#x27;data&#x27;</span></span><br><span class="line"><span class="comment"> * is the return value of &#x27;saver&#x27; function pointer if the data is NOT a number.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * If the quicklist element is a long long, then the return value is returned in</span></span><br><span class="line"><span class="comment"> * &#x27;sval&#x27;.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Return value of 0 means no elements available.</span></span><br><span class="line"><span class="comment"> * Return value of 1 means check &#x27;data&#x27; and &#x27;sval&#x27; for values.</span></span><br><span class="line"><span class="comment"> * If &#x27;data&#x27; is set, use &#x27;data&#x27; and &#x27;sz&#x27;.  Otherwise, use &#x27;sval&#x27;. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">quicklistPopCustom</span><span class="params">(quicklist *quicklist, <span class="keyword">int</span> where, <span class="keyword">unsigned</span> <span class="keyword">char</span> **data,</span></span></span><br><span class="line"><span class="function"><span class="params">                       <span class="keyword">unsigned</span> <span class="keyword">int</span> *sz, <span class="keyword">long</span> <span class="keyword">long</span> *sval,</span></span></span><br><span class="line"><span class="function"><span class="params">                       <span class="keyword">void</span> *(*saver)(<span class="keyword">unsigned</span> <span class="keyword">char</span> *data, <span class="keyword">unsigned</span> <span class="keyword">int</span> sz))</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *p;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *vstr;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> vlen;</span><br><span class="line">    <span class="keyword">long</span> <span class="keyword">long</span> vlong;</span><br><span class="line">    <span class="keyword">int</span> pos = (where == QUICKLIST_HEAD) ? <span class="number">0</span> : <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (quicklist-&gt;count == <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (data)</span><br><span class="line">        *data = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="keyword">if</span> (sz)</span><br><span class="line">        *sz = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (sval)</span><br><span class="line">        *sval = <span class="number">-123456789</span>;</span><br><span class="line"></span><br><span class="line">    quicklistNode *node;</span><br><span class="line">    <span class="keyword">if</span> (where == QUICKLIST_HEAD &amp;&amp; quicklist-&gt;head) &#123;</span><br><span class="line">        node = quicklist-&gt;head;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (where == QUICKLIST_TAIL &amp;&amp; quicklist-&gt;tail) &#123;</span><br><span class="line">        node = quicklist-&gt;tail;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    p = ziplistIndex(node-&gt;zl, pos);</span><br><span class="line">    <span class="keyword">if</span> (ziplistGet(p, &amp;vstr, &amp;vlen, &amp;vlong)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (vstr) &#123;</span><br><span class="line">            <span class="keyword">if</span> (data)</span><br><span class="line">                *data = saver(vstr, vlen);</span><br><span class="line">            <span class="keyword">if</span> (sz)</span><br><span class="line">                *sz = vlen;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">if</span> (data)</span><br><span class="line">                *data = <span class="literal">NULL</span>;</span><br><span class="line">            <span class="keyword">if</span> (sval)</span><br><span class="line">                *sval = vlong;</span><br><span class="line">        &#125;</span><br><span class="line">        quicklistDelIndex(quicklist, node, &amp;p);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-quicklistPop-quicklist-quicklist-int-where-unsigned-char-data-unsigned-int-sz-long-long-slong"><a href="#int-quicklistPop-quicklist-quicklist-int-where-unsigned-char-data-unsigned-int-sz-long-long-slong" class="headerlink" title="int quicklistPop(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *slong);"></a><code>int quicklistPop(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *slong);</code></h3><h4 id="功能-16"><a href="#功能-16" class="headerlink" title="功能"></a>功能</h4><p>pop功能</p>
+<h4 id="源码-16"><a href="#源码-16" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Default pop function</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Returns malloc&#x27;d value from quicklist */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">quicklistPop</span><span class="params">(quicklist *quicklist, <span class="keyword">int</span> where, <span class="keyword">unsigned</span> <span class="keyword">char</span> **data,</span></span></span><br><span class="line"><span class="function"><span class="params">                 <span class="keyword">unsigned</span> <span class="keyword">int</span> *sz, <span class="keyword">long</span> <span class="keyword">long</span> *slong)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> *vstr;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> vlen;</span><br><span class="line">    <span class="keyword">long</span> <span class="keyword">long</span> vlong;</span><br><span class="line">    <span class="keyword">if</span> (quicklist-&gt;count == <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> ret = quicklistPopCustom(quicklist, where, &amp;vstr, &amp;vlen, &amp;vlong,</span><br><span class="line">                                 _quicklistSaver);</span><br><span class="line">    <span class="keyword">if</span> (data)</span><br><span class="line">        *data = vstr;</span><br><span class="line">    <span class="keyword">if</span> (slong)</span><br><span class="line">        *slong = vlong;</span><br><span class="line">    <span class="keyword">if</span> (sz)</span><br><span class="line">        *sz = vlen;</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/database/" rel="tag"># database</a>
+          
+            <a href="/tags/redis/" rel="tag"># redis</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2018/05/09/redis-source-list/" rel="next" title="Redis 源码分析-list">
+                <i class="fa fa-chevron-left"></i> Redis 源码分析-list
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2018/05/21/redis-algorithmic-referencecount/" rel="prev" title="Redis算法 引用计数">
+                Redis算法 引用计数 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+  
+    <div id="gitalk-container"></div>
+  
+
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <img class="site-author-image" itemprop="image"
+                src="/assets/images/avatar.png"
+                alt="" />
+            
+              <p class="site-author-name" itemprop="name"></p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/%20%7C%7C%20archive">
+                
+                    <span class="site-state-item-count">59</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">14</span>
+                    <span class="site-state-item-name">分类</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">29</span>
+                    <span class="site-state-item-name">标签</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+            <div class="links-of-author motion-element">
+              
+                <span class="links-of-author-item">
+                  <a href="https://github.com/caticat" target="_blank" title="GitHub"><i class="fa fa-fw fa-github"></i>GitHub</a>
+                  
+                </span>
+              
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%96%87%E4%BB%B6"><span class="nav-number">1.</span> <span class="nav-text">相关文件</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%A6%82%E5%BF%B5"><span class="nav-number">2.</span> <span class="nav-text">相关概念</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">3.</span> <span class="nav-text">数据结构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BB%E8%A6%81%E5%AE%8F"><span class="nav-number">4.</span> <span class="nav-text">主要宏</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E5%88%86%E6%9E%90"><span class="nav-number">5.</span> <span class="nav-text">函数分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#quicklist-quicklistCreate-void"><span class="nav-number">5.1.</span> <span class="nav-text">quicklist *quicklistCreate(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD"><span class="nav-number">5.1.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81"><span class="nav-number">5.1.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#REDIS-STATIC-quicklistNode-quicklistCreateNode-void"><span class="nav-number">5.2.</span> <span class="nav-text">REDIS_STATIC quicklistNode *quicklistCreateNode(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-1"><span class="nav-number">5.2.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-1"><span class="nav-number">5.2.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-quicklistRelease-quicklist-quicklist"><span class="nav-number">5.3.</span> <span class="nav-text">void quicklistRelease(quicklist *quicklist);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-2"><span class="nav-number">5.3.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-2"><span class="nav-number">5.3.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#REDIS-STATIC-void-quicklistInsertNode-quicklist-quicklist-quicklistNode-old-node-quicklistNode-new-node-int-after"><span class="nav-number">5.4.</span> <span class="nav-text">REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist, quicklistNode *old_node, quicklistNode *new_node, int after);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-3"><span class="nav-number">5.4.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-3"><span class="nav-number">5.4.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#REDIS-STATIC-int-quicklistNodeAllowInsert-const-quicklistNode-node-const-int-fill-const-size-t-sz"><span class="nav-number">5.5.</span> <span class="nav-text">REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node, const int fill, const size_t sz);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-4"><span class="nav-number">5.5.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-4"><span class="nav-number">5.5.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-quicklistPushHead-quicklist-quicklist-void-value-size-t-sz"><span class="nav-number">5.6.</span> <span class="nav-text">int quicklistPushHead(quicklist *quicklist, void *value, size_t sz);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-5"><span class="nav-number">5.6.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-5"><span class="nav-number">5.6.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-quicklistPushTail-quicklist-quicklist-void-value-size-t-sz"><span class="nav-number">5.7.</span> <span class="nav-text">int quicklistPushTail(quicklist *quicklist, void *value, size_t sz);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-6"><span class="nav-number">5.7.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-6"><span class="nav-number">5.7.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#REDIS-STATIC-void-quicklistDelNode-quicklist-quicklist-quicklistNode-node"><span class="nav-number">5.8.</span> <span class="nav-text">REDIS_STATIC void __quicklistDelNode(quicklist *quicklist, quicklistNode *node);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-7"><span class="nav-number">5.8.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-7"><span class="nav-number">5.8.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#REDIS-STATIC-int-quicklistDelIndex-quicklist-quicklist-quicklistNode-node-unsigned-char-p"><span class="nav-number">5.9.</span> <span class="nav-text">REDIS_STATIC int quicklistDelIndex(quicklist *quicklist, quicklistNode *node, unsigned char **p);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-8"><span class="nav-number">5.9.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-8"><span class="nav-number">5.9.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-quicklistDelEntry-quicklistIter-iter-quicklistEntry-entry"><span class="nav-number">5.10.</span> <span class="nav-text">void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-9"><span class="nav-number">5.10.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-9"><span class="nav-number">5.10.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#REDIS-STATIC-void-quicklistInsert-quicklist-quicklist-quicklistEntry-entry-void-value-const-size-t-sz-int-after"><span class="nav-number">5.11.</span> <span class="nav-text">REDIS_STATIC void _quicklistInsert(quicklist *quicklist, quicklistEntry *entry, void *value, const size_t sz, int after);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-10"><span class="nav-number">5.11.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-10"><span class="nav-number">5.11.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#quicklistIter-quicklistGetIterator-const-quicklist-quicklist-int-direction"><span class="nav-number">5.12.</span> <span class="nav-text">quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-11"><span class="nav-number">5.12.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-11"><span class="nav-number">5.12.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#quicklistIter-quicklistGetIteratorAtIdx-const-quicklist-quicklist-const-int-direction-const-long-long-idx"><span class="nav-number">5.13.</span> <span class="nav-text">quicklistIter *quicklistGetIteratorAtIdx(const quicklist *quicklist, const int direction, const long long idx);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-12"><span class="nav-number">5.13.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-12"><span class="nav-number">5.13.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-quicklistNext-quicklistIter-iter-quicklistEntry-entry"><span class="nav-number">5.14.</span> <span class="nav-text">int quicklistNext(quicklistIter *iter, quicklistEntry *entry);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-13"><span class="nav-number">5.14.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-13"><span class="nav-number">5.14.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#quicklist-quicklistDup-quicklist-orig"><span class="nav-number">5.15.</span> <span class="nav-text">quicklist *quicklistDup(quicklist *orig);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-14"><span class="nav-number">5.15.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-14"><span class="nav-number">5.15.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-quicklistPopCustom-quicklist-quicklist-int-where-unsigned-char-data-unsigned-int-sz-long-long-sval-void-saver-unsigned-char-data-unsigned-int-sz"><span class="nav-number">5.16.</span> <span class="nav-text">int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *sval, void *(*saver)(unsigned char *data, unsigned int sz));</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-15"><span class="nav-number">5.16.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-15"><span class="nav-number">5.16.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-quicklistPop-quicklist-quicklist-int-where-unsigned-char-data-unsigned-int-sz-long-long-slong"><span class="nav-number">5.17.</span> <span class="nav-text">int quicklistPop(quicklist *quicklist, int where, unsigned char **data, unsigned int *sz, long long *slong);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-16"><span class="nav-number">5.17.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-16"><span class="nav-number">5.17.2.</span> <span class="nav-text">源码</span></a></li></ol></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2018 &mdash; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate"> 
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Pan</span>
+
+  
+
+  
+</div>
+
+
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/theme-next/hexo-theme-next">NexT.Gemini</a> v6.1.0</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="site-uv" title="总访客量">
+      <i class="fa fa-user"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="site-pv" title="总访问量">
+      <i class="fa fa-eye"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/three.min.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/canvas_lines.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.1.0"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=6.1.0"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.1.0"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.1.0"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.1.0"></script>
+
+
+
+  
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+    <script type="text/javascript">
+    var gitalk = new Gitalk({
+      clientID: 'e8443a1845703a67513c',
+      clientSecret: '0b0efab598ef8cc3657c3853b3c0189da301fb99',
+      repo: 'caticat.github.io',
+      owner: 'caticat',
+      admin: ['caticat'],
+      id: location.pathname,
+      distractionFreeMode: 'false'
+    })
+    gitalk.render('gitalk-container')           
+  </script>
+
+
+  
+
+  <script type="text/javascript">
+    // Popup Window;
+    var isfetched = false;
+    var isXml = true;
+    // Search DB path;
+    var search_path = "search.xml";
+    if (search_path.length === 0) {
+      search_path = "search.xml";
+    } else if (/json$/i.test(search_path)) {
+      isXml = false;
+    }
+    var path = "/" + search_path;
+    // monitor main search box;
+
+    var onPopupClose = function (e) {
+      $('.popup').hide();
+      $('#local-search-input').val('');
+      $('.search-result-list').remove();
+      $('#no-result').remove();
+      $(".local-search-pop-overlay").remove();
+      $('body').css('overflow', '');
+    }
+
+    function proceedsearch() {
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay"></div>')
+        .css('overflow', 'hidden');
+      $('.search-popup-overlay').click(onPopupClose);
+      $('.popup').toggle();
+      var $localSearchInput = $('#local-search-input');
+      $localSearchInput.attr("autocapitalize", "none");
+      $localSearchInput.attr("autocorrect", "off");
+      $localSearchInput.focus();
+    }
+
+    // search function;
+    var searchFunc = function(path, search_id, content_id) {
+      'use strict';
+
+      // start loading animation
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay">' +
+          '<div id="search-loading-icon">' +
+          '<i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>' +
+          '</div>' +
+          '</div>')
+        .css('overflow', 'hidden');
+      $("#search-loading-icon").css('margin', '20% auto 0 auto').css('text-align', 'center');
+
+      
+
+      $.ajax({
+        url: path,
+        dataType: isXml ? "xml" : "json",
+        async: true,
+        success: function(res) {
+          // get the contents from search data
+          isfetched = true;
+          $('.popup').detach().appendTo('.header-inner');
+          var datas = isXml ? $("entry", res).map(function() {
+            return {
+              title: $("title", this).text(),
+              content: $("content",this).text(),
+              url: $("url" , this).text()
+            };
+          }).get() : res;
+          var input = document.getElementById(search_id);
+          var resultContent = document.getElementById(content_id);
+          var inputEventFunction = function() {
+            var searchText = input.value.trim().toLowerCase();
+            var keywords = searchText.split(/[\s\-]+/);
+            if (keywords.length > 1) {
+              keywords.push(searchText);
+            }
+            var resultItems = [];
+            if (searchText.length > 0) {
+              // perform local searching
+              datas.forEach(function(data) {
+                var isMatch = false;
+                var hitCount = 0;
+                var searchTextCount = 0;
+                var title = data.title.trim();
+                var titleInLowerCase = title.toLowerCase();
+                var content = data.content.trim().replace(/<[^>]+>/g,"");
+                
+                var contentInLowerCase = content.toLowerCase();
+                var articleUrl = decodeURIComponent(data.url);
+                var indexOfTitle = [];
+                var indexOfContent = [];
+                // only match articles with not empty titles
+                if(title != '') {
+                  keywords.forEach(function(keyword) {
+                    function getIndexByWord(word, text, caseSensitive) {
+                      var wordLen = word.length;
+                      if (wordLen === 0) {
+                        return [];
+                      }
+                      var startPosition = 0, position = [], index = [];
+                      if (!caseSensitive) {
+                        text = text.toLowerCase();
+                        word = word.toLowerCase();
+                      }
+                      while ((position = text.indexOf(word, startPosition)) > -1) {
+                        index.push({position: position, word: word});
+                        startPosition = position + wordLen;
+                      }
+                      return index;
+                    }
+
+                    indexOfTitle = indexOfTitle.concat(getIndexByWord(keyword, titleInLowerCase, false));
+                    indexOfContent = indexOfContent.concat(getIndexByWord(keyword, contentInLowerCase, false));
+                  });
+                  if (indexOfTitle.length > 0 || indexOfContent.length > 0) {
+                    isMatch = true;
+                    hitCount = indexOfTitle.length + indexOfContent.length;
+                  }
+                }
+
+                // show search results
+
+                if (isMatch) {
+                  // sort index by position of keyword
+
+                  [indexOfTitle, indexOfContent].forEach(function (index) {
+                    index.sort(function (itemLeft, itemRight) {
+                      if (itemRight.position !== itemLeft.position) {
+                        return itemRight.position - itemLeft.position;
+                      } else {
+                        return itemLeft.word.length - itemRight.word.length;
+                      }
+                    });
+                  });
+
+                  // merge hits into slices
+
+                  function mergeIntoSlice(text, start, end, index) {
+                    var item = index[index.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    var hits = [];
+                    var searchTextCountInSlice = 0;
+                    while (position + word.length <= end && index.length != 0) {
+                      if (word === searchText) {
+                        searchTextCountInSlice++;
+                      }
+                      hits.push({position: position, length: word.length});
+                      var wordEnd = position + word.length;
+
+                      // move to next position of hit
+
+                      index.pop();
+                      while (index.length != 0) {
+                        item = index[index.length - 1];
+                        position = item.position;
+                        word = item.word;
+                        if (wordEnd > position) {
+                          index.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                    searchTextCount += searchTextCountInSlice;
+                    return {
+                      hits: hits,
+                      start: start,
+                      end: end,
+                      searchTextCount: searchTextCountInSlice
+                    };
+                  }
+
+                  var slicesOfTitle = [];
+                  if (indexOfTitle.length != 0) {
+                    slicesOfTitle.push(mergeIntoSlice(title, 0, title.length, indexOfTitle));
+                  }
+
+                  var slicesOfContent = [];
+                  while (indexOfContent.length != 0) {
+                    var item = indexOfContent[indexOfContent.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    // cut out 100 characters
+                    var start = position - 20;
+                    var end = position + 80;
+                    if(start < 0){
+                      start = 0;
+                    }
+                    if (end < position + word.length) {
+                      end = position + word.length;
+                    }
+                    if(end > content.length){
+                      end = content.length;
+                    }
+                    slicesOfContent.push(mergeIntoSlice(content, start, end, indexOfContent));
+                  }
+
+                  // sort slices in content by search text's count and hits' count
+
+                  slicesOfContent.sort(function (sliceLeft, sliceRight) {
+                    if (sliceLeft.searchTextCount !== sliceRight.searchTextCount) {
+                      return sliceRight.searchTextCount - sliceLeft.searchTextCount;
+                    } else if (sliceLeft.hits.length !== sliceRight.hits.length) {
+                      return sliceRight.hits.length - sliceLeft.hits.length;
+                    } else {
+                      return sliceLeft.start - sliceRight.start;
+                    }
+                  });
+
+                  // select top N slices in content
+
+                  var upperBound = parseInt('1');
+                  if (upperBound >= 0) {
+                    slicesOfContent = slicesOfContent.slice(0, upperBound);
+                  }
+
+                  // highlight title and content
+
+                  function highlightKeyword(text, slice) {
+                    var result = '';
+                    var prevEnd = slice.start;
+                    slice.hits.forEach(function (hit) {
+                      result += text.substring(prevEnd, hit.position);
+                      var end = hit.position + hit.length;
+                      result += '<b class="search-keyword">' + text.substring(hit.position, end) + '</b>';
+                      prevEnd = end;
+                    });
+                    result += text.substring(prevEnd, slice.end);
+                    return result;
+                  }
+
+                  var resultItem = '';
+
+                  if (slicesOfTitle.length != 0) {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + highlightKeyword(title, slicesOfTitle[0]) + "</a>";
+                  } else {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + title + "</a>";
+                  }
+
+                  slicesOfContent.forEach(function (slice) {
+                    resultItem += "<a href='" + articleUrl + "'>" +
+                      "<p class=\"search-result\">" + highlightKeyword(content, slice) +
+                      "...</p>" + "</a>";
+                  });
+
+                  resultItem += "</li>";
+                  resultItems.push({
+                    item: resultItem,
+                    searchTextCount: searchTextCount,
+                    hitCount: hitCount,
+                    id: resultItems.length
+                  });
+                }
+              })
+            };
+            if (keywords.length === 1 && keywords[0] === "") {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-search fa-5x" /></div>'
+            } else if (resultItems.length === 0) {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-frown-o fa-5x" /></div>'
+            } else {
+              resultItems.sort(function (resultLeft, resultRight) {
+                if (resultLeft.searchTextCount !== resultRight.searchTextCount) {
+                  return resultRight.searchTextCount - resultLeft.searchTextCount;
+                } else if (resultLeft.hitCount !== resultRight.hitCount) {
+                  return resultRight.hitCount - resultLeft.hitCount;
+                } else {
+                  return resultRight.id - resultLeft.id;
+                }
+              });
+              var searchResultList = '<ul class=\"search-result-list\">';
+              resultItems.forEach(function (result) {
+                searchResultList += result.item;
+              })
+              searchResultList += "</ul>";
+              resultContent.innerHTML = searchResultList;
+            }
+          }
+
+          if ('auto' === 'auto') {
+            input.addEventListener('input', inputEventFunction);
+          } else {
+            $('.search-icon').click(inputEventFunction);
+            input.addEventListener('keypress', function (event) {
+              if (event.keyCode === 13) {
+                inputEventFunction();
+              }
+            });
+          }
+
+          // remove loading animation
+          $(".local-search-pop-overlay").remove();
+          $('body').css('overflow', '');
+
+          proceedsearch();
+        }
+      });
+    }
+
+    // handle and trigger popup window;
+    $('.popup-trigger').click(function(e) {
+      e.stopPropagation();
+      if (isfetched === false) {
+        searchFunc(path, 'local-search-input', 'local-search-result');
+      } else {
+        proceedsearch();
+      };
+    });
+
+    $('.popup-btn-close').click(onPopupClose);
+    $('.popup').click(function(e){
+      e.stopPropagation();
+    });
+    $(document).on('keyup', function (event) {
+      var shouldDismissSearchPopup = event.which === 27 &&
+        $('.search-popup').is(':visible');
+      if (shouldDismissSearchPopup) {
+        onPopupClose();
+      }
+    });
+  </script>
+
+
+
+
+
+  
+
+  
+  <script src="https://cdn1.lncld.net/static/js/av-core-mini-0.6.4.js"></script>
+  <script>AV.initialize("BVY1wsbMOInpuLTE6Xks1hEo-gzGzoHsz", "9t3lzissKkIRVwunmGW4bgkp");</script>
+  <script>
+    function showTime(Counter) {
+      var query = new AV.Query(Counter);
+      var entries = [];
+      var $visitors = $(".leancloud_visitors");
+
+      $visitors.each(function () {
+        entries.push( $(this).attr("id").trim() );
+      });
+
+      query.containedIn('url', entries);
+      query.find()
+        .done(function (results) {
+          var COUNT_CONTAINER_REF = '.leancloud-visitors-count';
+
+          if (results.length === 0) {
+            $visitors.find(COUNT_CONTAINER_REF).text(0);
+            return;
+          }
+
+          for (var i = 0; i < results.length; i++) {
+            var item = results[i];
+            var url = item.get('url');
+            var time = item.get('time');
+            var element = document.getElementById(url);
+
+            $(element).find(COUNT_CONTAINER_REF).text(time);
+          }
+          for(var i = 0; i < entries.length; i++) {
+            var url = entries[i];
+            var element = document.getElementById(url);
+            var countSpan = $(element).find(COUNT_CONTAINER_REF);
+            if( countSpan.text() == '') {
+              countSpan.text(0);
+            }
+          }
+        })
+        .fail(function (object, error) {
+          console.log("Error: " + error.code + " " + error.message);
+        });
+    }
+
+    function addCount(Counter) {
+      var $visitors = $(".leancloud_visitors");
+      var url = $visitors.attr('id').trim();
+      var title = $visitors.attr('data-flag-title').trim();
+      var query = new AV.Query(Counter);
+
+      query.equalTo("url", url);
+      query.find({
+        success: function(results) {
+          if (results.length > 0) {
+            var counter = results[0];
+            counter.fetchWhenSave(true);
+            counter.increment("time");
+            
+            counter.save(null, {
+              success: function(counter) {
+                
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(counter.get('time'));
+                
+              },
+              error: function(counter, error) {
+                console.log('Failed to save Visitor num, with error message: ' + error.message);
+              }
+            });
+          } else {
+            
+              var newcounter = new Counter();
+              /* Set ACL */
+              var acl = new AV.ACL();
+              acl.setPublicReadAccess(true);
+              acl.setPublicWriteAccess(true);
+              newcounter.setACL(acl);
+              /* End Set ACL */
+              newcounter.set("title", title);
+              newcounter.set("url", url);
+              newcounter.set("time", 1);
+              newcounter.save(null, {
+                success: function(newcounter) {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(newcounter.get('time'));
+                },
+                error: function(newcounter, error) {
+                  console.log('Failed to create');
+                }
+              });
+            
+          }
+        },
+        error: function(error) {
+          console.log('Error:' + error.code + " " + error.message);
+        }
+      });
+    }
+
+    $(function() {
+      var Counter = AV.Object.extend("Counter");
+      if ($('.leancloud_visitors').length == 1) {
+        addCount(Counter);
+      } else if ($('.post-title-link').length > 1) {
+        showTime(Counter);
+      }
+    });
+  </script>
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+<script src="/live2dw/lib/L2Dwidget.min.js?094cbace49a39548bed64abff5988b05"></script><script>L2Dwidget.init({"pluginModelPath":"assets/","model":{"jsonPath":"/live2dw/assets/haru01.model.json"},"display":{"position":"right","width":150,"height":300},"mobile":{"show":false},"log":false,"pluginJsPath":"lib/","pluginRootPath":"live2dw/","tagMode":false});</script></body>
+</html>

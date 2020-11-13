@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.1.0" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.1.0">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.1.0" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '',
+    scheme: 'Gemini',
+    version: '6.1.0',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="跳表就是分层级的有序链表查询数据快,结构简单跳表所有层级的第一个元素都是header的头元素(空数据)结尾是实际插入的元素跳表的第一个实际插入的元素是回退不到header的代码中forward的处理是遍历循环处理backward的处理是一个if判断是因为forward是层级相关的,所有层级都要处理而backward只是一个值,backward本身只记录0级的数据 相关文件 server.h t_z">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis 源码分析-skiplist">
+<meta property="og:url" content="https://caticat.github.io/2018/05/07/redis-source-skiplist/index.html">
+<meta property="og:site_name" content="杂记">
+<meta property="og:description" content="跳表就是分层级的有序链表查询数据快,结构简单跳表所有层级的第一个元素都是header的头元素(空数据)结尾是实际插入的元素跳表的第一个实际插入的元素是回退不到header的代码中forward的处理是遍历循环处理backward的处理是一个if判断是因为forward是层级相关的,所有层级都要处理而backward只是一个值,backward本身只记录0级的数据 相关文件 server.h t_z">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2018-05-07T15:16:12.000Z">
+<meta property="article:modified_time" content="2020-11-13T04:01:07.415Z">
+<meta property="article:author" content="Pan">
+<meta property="article:tag" content="database">
+<meta property="article:tag" content="redis">
+<meta name="twitter:card" content="summary">
+
+
+
+
+
+
+  <link rel="canonical" href="https://caticat.github.io/2018/05/07/redis-source-skiplist/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Redis 源码分析-skiplist | 杂记</title>
+  
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"> 
+
+<div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">杂记</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle">不乱</p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+          
+  <li class="menu-item menu-item-home">
+    <a href="/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />首页</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-tags">
+    <a href="/tags/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-tags"></i> <br />标签</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-categories">
+    <a href="/categories/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />分类</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-archives">
+    <a href="/archives/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />归档</a>
+</li>
+
+      
+
+      
+        <li class="menu-item menu-item-search">
+          
+            <a href="javascript:;" class="popup-trigger">
+          
+            
+              <i class="menu-item-icon fa fa-search fa-fw"></i> <br />搜索</a>
+        </li>
+      
+    </ul>
+  
+
+  
+
+  
+    <div class="site-search">
+      
+  <div class="popup search-popup local-search-popup">
+  <div class="local-search-header clearfix">
+    <span class="search-icon">
+      <i class="fa fa-search"></i>
+    </span>
+    <span class="popup-btn-close">
+      <i class="fa fa-times-circle"></i>
+    </span>
+    <div class="local-search-input-wrapper">
+      <input autocomplete="off"
+             placeholder="搜索..." spellcheck="false"
+             type="text" id="local-search-input">
+    </div>
+  </div>
+  <div id="local-search-result"></div>
+</div>
+
+
+
+    </div>
+  
+</nav>
+
+
+  
+
+
+
+ </div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://caticat.github.io/2018/05/07/redis-source-skiplist/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/assets/images/avatar.png">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="杂记">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Redis 源码分析-skiplist</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2018-05-07T15:16:12+00:00">2018-05-07</time>
+            
+
+            
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/" itemprop="url" rel="index"><span itemprop="name">redis</span></a></span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/source/" itemprop="url" rel="index"><span itemprop="name">source</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+             <span id="/2018/05/07/redis-source-skiplist/" class="leancloud_visitors" data-flag-title="Redis 源码分析-skiplist">
+               <span class="post-meta-divider">|</span>
+               <span class="post-meta-item-icon">
+                 <i class="fa fa-eye"></i>
+               </span>
+               
+                 <span class="post-meta-item-text">阅读次数：</span>
+               
+                 <span class="leancloud-visitors-count"></span>
+             </span>
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>跳表<br>就是分层级的有序链表<br>查询数据快,结构简单<br>跳表所有层级的第一个元素都是header的头元素(空数据)<br>结尾是实际插入的元素<br>跳表的第一个实际插入的元素是回退不到header的<br>代码中<br>forward的处理是遍历循环处理<br>backward的处理是一个if判断<br>是因为forward是层级相关的,所有层级都要处理<br>而backward只是一个值,backward本身只记录0级的数据</p>
+<h2 id="相关文件"><a href="#相关文件" class="headerlink" title="相关文件"></a>相关文件</h2><ul>
+<li>server.h</li>
+<li>t_zset.c<a id="more"></a>
+
+</li>
+</ul>
+<h2 id="相关概念"><a href="#相关概念" class="headerlink" title="相关概念"></a>相关概念</h2><ul>
+<li>strtod<br>  原型<code>double strtod(const char *nptr,char **endptr);</code><br>  将字符串转化为double</li>
+</ul>
+<h2 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* ZSETs use a specialized version of Skiplists */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistNode</span> &#123;</span> <span class="comment">// 跳表节点</span></span><br><span class="line">    robj *obj; <span class="comment">// 数据(redis对象)</span></span><br><span class="line">    <span class="keyword">double</span> score; <span class="comment">// 积分(排序用)</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistNode</span> *<span class="title">backward</span>;</span> <span class="comment">// 前一个节点(后退)</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistLevel</span> &#123;</span> <span class="comment">// 层级结构</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistNode</span> *<span class="title">forward</span>;</span> <span class="comment">// 下一个节点(前进)</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">int</span> span; <span class="comment">// 跨度(和当前节点间隔了多少元素(包含下一个节点))</span></span><br><span class="line">    &#125; level[]; <span class="comment">// 不同层级的信息</span></span><br><span class="line">&#125; zskiplistNode;</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">zskiplist</span> &#123;</span> <span class="comment">// 跳表结构</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistNode</span> *<span class="title">header</span>, *<span class="title">tail</span>;</span> <span class="comment">// 头(),尾节点</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> length; <span class="comment">// 总元素个数</span></span><br><span class="line">    <span class="keyword">int</span> level; <span class="comment">// 总层级(最大等级+1)</span></span><br><span class="line">&#125; zskiplist;</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">zset</span> &#123;</span> <span class="comment">// 有序set结构</span></span><br><span class="line">    dict *dict; <span class="comment">// &lt;值, 分数&gt;</span></span><br><span class="line">    zskiplist *zsl; <span class="comment">// 跳表</span></span><br><span class="line">&#125; zset;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Struct to hold a inclusive/exclusive range spec by score comparison. */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span> <span class="comment">// 查找用表示范围的数据结构</span></span><br><span class="line">    <span class="keyword">double</span> min, max; <span class="comment">// 最大最小值</span></span><br><span class="line">    <span class="keyword">int</span> minex, maxex; <span class="comment">/* are min or max exclusive? */</span> <span class="comment">// 标记是否是开区间</span></span><br><span class="line">&#125; zrangespec;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Struct to hold an inclusive/exclusive range spec by lexicographic comparison. */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    robj *min, *max;  <span class="comment">/* May be set to shared.(minstring|maxstring) */</span> <span class="comment">// 最大最小值</span></span><br><span class="line">    <span class="keyword">int</span> minex, maxex; <span class="comment">/* are min or max exclusive? */</span> <span class="comment">// 标记是否是开区间</span></span><br><span class="line">&#125; zlexrangespec;</span><br></pre></td></tr></table></figure>
+
+<h2 id="主要宏"><a href="#主要宏" class="headerlink" title="主要宏"></a>主要宏</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ZSKIPLIST_MAXLEVEL 32 <span class="comment">/* Should be enough for 2^32 elements */</span> <span class="comment">// 最大层数</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ZSKIPLIST_P 0.25      <span class="comment">/* Skiplist P = 1/4 */</span> <span class="comment">// 元素增加层数的概率</span></span></span><br></pre></td></tr></table></figure>
+
+<h2 id="函数分析"><a href="#函数分析" class="headerlink" title="函数分析"></a>函数分析</h2><h3 id="zskiplistNode-zslCreateNode-int-level-double-score-robj-obj"><a href="#zskiplistNode-zslCreateNode-int-level-double-score-robj-obj" class="headerlink" title="zskiplistNode *zslCreateNode(int level, double score, robj *obj);"></a><code>zskiplistNode *zslCreateNode(int level, double score, robj *obj);</code></h3><h4 id="功能"><a href="#功能" class="headerlink" title="功能"></a>功能</h4><p>创建一个跳表节点<br>一个节点,一旦创建出来就已经决定了它自身的层级<br>所以它的数组内存是固定的<br>不需要在后面扩展层级数据信息</p>
+<h4 id="源码"><a href="#源码" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">zskiplistNode *<span class="title">zslCreateNode</span><span class="params">(<span class="keyword">int</span> level, <span class="keyword">double</span> score, robj *obj)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *zn = zmalloc(<span class="keyword">sizeof</span>(*zn)+level*<span class="keyword">sizeof</span>(struct zskiplistLevel)); <span class="comment">// 内存申请</span></span><br><span class="line">    zn-&gt;score = score; <span class="comment">// 记录积分</span></span><br><span class="line">    zn-&gt;obj = obj; <span class="comment">// 记录数据</span></span><br><span class="line">    <span class="keyword">return</span> zn;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="zskiplist-zslCreate-void"><a href="#zskiplist-zslCreate-void" class="headerlink" title="zskiplist *zslCreate(void);"></a><code>zskiplist *zslCreate(void);</code></h3><h4 id="功能-1"><a href="#功能-1" class="headerlink" title="功能"></a>功能</h4><p>创建跳表</p>
+<h4 id="源码-1"><a href="#源码-1" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">zskiplist *<span class="title">zslCreate</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> j;</span><br><span class="line">    zskiplist *zsl;</span><br><span class="line"></span><br><span class="line">    zsl = zmalloc(<span class="keyword">sizeof</span>(*zsl)); <span class="comment">// 申请内存</span></span><br><span class="line">    zsl-&gt;level = <span class="number">1</span>; <span class="comment">// 初始等级为1</span></span><br><span class="line">    zsl-&gt;length = <span class="number">0</span>; <span class="comment">// 没有元素</span></span><br><span class="line">    zsl-&gt;header = zslCreateNode(ZSKIPLIST_MAXLEVEL,<span class="number">0</span>,<span class="literal">NULL</span>); <span class="comment">// 创建一个头,包含所有层级,数据为空,0分</span></span><br><span class="line">    <span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; ZSKIPLIST_MAXLEVEL; j++) &#123; <span class="comment">// 初始化头数据</span></span><br><span class="line">        zsl-&gt;header-&gt;level[j].forward = <span class="literal">NULL</span>; <span class="comment">// 没有下一个元素</span></span><br><span class="line">        zsl-&gt;header-&gt;level[j].span = <span class="number">0</span>; <span class="comment">// 间隔元素数量为0</span></span><br><span class="line">    &#125;</span><br><span class="line">    zsl-&gt;header-&gt;backward = <span class="literal">NULL</span>; <span class="comment">// 没有前一个元素</span></span><br><span class="line">    zsl-&gt;tail = <span class="literal">NULL</span>; <span class="comment">// 结尾为空</span></span><br><span class="line">    <span class="keyword">return</span> zsl;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-zslFreeNode-zskiplistNode-node"><a href="#void-zslFreeNode-zskiplistNode-node" class="headerlink" title="void zslFreeNode(zskiplistNode *node);"></a><code>void zslFreeNode(zskiplistNode *node);</code></h3><h4 id="功能-2"><a href="#功能-2" class="headerlink" title="功能"></a>功能</h4><p>释放节点内存</p>
+<h4 id="源码-2"><a href="#源码-2" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">zslFreeNode</span><span class="params">(zskiplistNode *node)</span> </span>&#123;</span><br><span class="line">    decrRefCount(node-&gt;obj); <span class="comment">// 减少obj的引用次数,当次数为1时释放内存</span></span><br><span class="line">    zfree(node); <span class="comment">// 释放节点本身申请的内存</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-zslFree-zskiplist-zsl"><a href="#void-zslFree-zskiplist-zsl" class="headerlink" title="void zslFree(zskiplist *zsl);"></a><code>void zslFree(zskiplist *zsl);</code></h3><h4 id="功能-3"><a href="#功能-3" class="headerlink" title="功能"></a>功能</h4><p>释放跳表内存</p>
+<h4 id="源码-3"><a href="#源码-3" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">zslFree</span><span class="params">(zskiplist *zsl)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *node = zsl-&gt;header-&gt;level[<span class="number">0</span>].forward, *next; <span class="comment">// 获取到除头外的第一个元素</span></span><br><span class="line"></span><br><span class="line">    zfree(zsl-&gt;header); <span class="comment">// 释放头元素</span></span><br><span class="line">    <span class="keyword">while</span>(node) &#123; <span class="comment">// 遍历</span></span><br><span class="line">        next = node-&gt;level[<span class="number">0</span>].forward; <span class="comment">// 记录下一个元素</span></span><br><span class="line">        zslFreeNode(node); <span class="comment">// 释放节点元素</span></span><br><span class="line">        node = next; <span class="comment">// 递增</span></span><br><span class="line">    &#125;</span><br><span class="line">    zfree(zsl); <span class="comment">// 释放跳表本身</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-zslRandomLevel-void"><a href="#int-zslRandomLevel-void" class="headerlink" title="int zslRandomLevel(void);"></a><code>int zslRandomLevel(void);</code></h3><h4 id="功能-4"><a href="#功能-4" class="headerlink" title="功能"></a>功能</h4><p>返回一个随机的跳表层级算法</p>
+<h4 id="源码-4"><a href="#源码-4" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Returns a random level for the new skiplist node we are going to create.</span></span><br><span class="line"><span class="comment"> * The return value of this function is between 1 and ZSKIPLIST_MAXLEVEL</span></span><br><span class="line"><span class="comment"> * (both inclusive), with a powerlaw-alike distribution where higher</span></span><br><span class="line"><span class="comment"> * levels are less likely to be returned. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">zslRandomLevel</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> level = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">while</span> ((random()&amp;<span class="number">0xFFFF</span>) &lt; (ZSKIPLIST_P * <span class="number">0xFFFF</span>))</span><br><span class="line">        level += <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">return</span> (level&lt;ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="zskiplistNode-zslInsert-zskiplist-zsl-double-score-robj-obj"><a href="#zskiplistNode-zslInsert-zskiplist-zsl-double-score-robj-obj" class="headerlink" title="zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj);"></a><code>zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj);</code></h3><h4 id="功能-5"><a href="#功能-5" class="headerlink" title="功能"></a>功能</h4><p>跳表插入数据<br>这里的跳表没有检测重复数据信息<br>因为redis的跳表是配合dict使用的<br>判断数据是否重复使用dict来判断</p>
+<h4 id="源码-5"><a href="#源码-5" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">zskiplistNode *<span class="title">zslInsert</span><span class="params">(zskiplist *zsl, <span class="keyword">double</span> score, robj *obj)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x; <span class="comment">// update:记录所有需要变动的元素(新插入的元素在update的元素之后)</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> rank[ZSKIPLIST_MAXLEVEL]; <span class="comment">// 不同层级,从起始到新插入元素的位置统计,包含的元素的个数</span></span><br><span class="line">    <span class="keyword">int</span> i, level;</span><br><span class="line"></span><br><span class="line">    serverAssert(!isnan(score)); <span class="comment">// 保证score必然有值</span></span><br><span class="line">    x = zsl-&gt;header; <span class="comment">// 记录起始位置</span></span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123; <span class="comment">// 倒叙遍历(所有跳表查询数据都是使用倒序)</span></span><br><span class="line">        <span class="comment">/* store rank that is crossed to reach the insert position */</span></span><br><span class="line">        rank[i] = i == (zsl-&gt;level<span class="number">-1</span>) ? <span class="number">0</span> : rank[i+<span class="number">1</span>]; <span class="comment">// 最上层的头数据肯定没有rank值,下面层级的rank值的起始就是上一个层级的值</span></span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp;</span><br><span class="line">            (x-&gt;level[i].forward-&gt;score &lt; score ||</span><br><span class="line">                (x-&gt;level[i].forward-&gt;score == score &amp;&amp;</span><br><span class="line">                compareStringObjects(x-&gt;level[i].forward-&gt;obj,obj) &lt; <span class="number">0</span>))) &#123; <span class="comment">// 当前遍历元素比待插入元素小则继续遍历</span></span><br><span class="line">            rank[i] += x-&gt;level[i].span; <span class="comment">// 增加rank</span></span><br><span class="line">            x = x-&gt;level[i].forward; <span class="comment">// 获取下一个元素</span></span><br><span class="line">        &#125;</span><br><span class="line">        update[i] = x; <span class="comment">// 记录最符合条件的元素</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">/* we assume the key is not already inside, since we allow duplicated</span></span><br><span class="line"><span class="comment">     * scores, and the re-insertion of score and redis object should never</span></span><br><span class="line"><span class="comment">     * happen since the caller of zslInsert() should test in the hash table</span></span><br><span class="line"><span class="comment">     * if the element is already inside or not. */</span></span><br><span class="line">    level = zslRandomLevel(); <span class="comment">// 生成新插入数据的层级</span></span><br><span class="line">    <span class="keyword">if</span> (level &gt; zsl-&gt;level) &#123; <span class="comment">// 比当前层级高的话</span></span><br><span class="line">        <span class="keyword">for</span> (i = zsl-&gt;level; i &lt; level; i++) &#123; <span class="comment">// 初始化所有新层级</span></span><br><span class="line">            rank[i] = <span class="number">0</span>; <span class="comment">// 没有rank值</span></span><br><span class="line">            update[i] = zsl-&gt;header; <span class="comment">// 因为没有其他数据,所以变更的一定都是hader</span></span><br><span class="line">            update[i]-&gt;level[i].span = zsl-&gt;length; <span class="comment">// 初始间隔就是跳表的所有长度</span></span><br><span class="line">        &#125;</span><br><span class="line">        zsl-&gt;level = level; <span class="comment">// 记录当前跳表的等级</span></span><br><span class="line">    &#125;</span><br><span class="line">    x = zslCreateNode(level,score,obj); <span class="comment">// 创建一个新的node</span></span><br><span class="line">    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; level; i++) &#123; <span class="comment">// 更新所有需要更新的节点</span></span><br><span class="line">        x-&gt;level[i].forward = update[i]-&gt;level[i].forward; <span class="comment">// 新节点插入跳表</span></span><br><span class="line">        update[i]-&gt;level[i].forward = x;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* update span covered by update[i] as x is inserted here */</span></span><br><span class="line">        x-&gt;level[i].span = update[i]-&gt;level[i].span - (rank[<span class="number">0</span>] - rank[i]); <span class="comment">// 记录新节点的span间隔值</span></span><br><span class="line">        update[i]-&gt;level[i].span = (rank[<span class="number">0</span>] - rank[i]) + <span class="number">1</span>; <span class="comment">// 修改update元节点的间隔值(多了一个新增节点,所以+1)</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* increment span for untouched levels */</span></span><br><span class="line">    <span class="keyword">for</span> (i = level; i &lt; zsl-&gt;level; i++) &#123; <span class="comment">// 当随机的level&lt;原链表大小时,需要把上层的间隔值做下递增调整,否则会漏数据</span></span><br><span class="line">        update[i]-&gt;level[i].span++; <span class="comment">// 递增</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    x-&gt;backward = (update[<span class="number">0</span>] == zsl-&gt;header) ? <span class="literal">NULL</span> : update[<span class="number">0</span>]; <span class="comment">// 是否可以回退,元素回退不到头数据</span></span><br><span class="line">    <span class="keyword">if</span> (x-&gt;level[<span class="number">0</span>].forward) <span class="comment">// 不是结尾</span></span><br><span class="line">        x-&gt;level[<span class="number">0</span>].forward-&gt;backward = x; <span class="comment">// 后面的元素记录前面的元素指针</span></span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        zsl-&gt;tail = x; <span class="comment">// 标记结尾</span></span><br><span class="line">    zsl-&gt;length++; <span class="comment">// 递增长度</span></span><br><span class="line">    <span class="keyword">return</span> x; <span class="comment">// 返回新增节点</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-zslDeleteNode-zskiplist-zsl-zskiplistNode-x-zskiplistNode-update"><a href="#void-zslDeleteNode-zskiplist-zsl-zskiplistNode-x-zskiplistNode-update" class="headerlink" title="void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update);"></a><code>void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update);</code></h3><h4 id="功能-6"><a href="#功能-6" class="headerlink" title="功能"></a>功能</h4><p>删除节点<br>不是放内存<br>只是整理跳表的元素结构关系<br>update为所有相关的需要处理的节点列表</p>
+<h4 id="源码-6"><a href="#源码-6" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Internal function used by zslDelete, zslDeleteByScore and zslDeleteByRank */</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">zslDeleteNode</span><span class="params">(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line">    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; zsl-&gt;level; i++) &#123; <span class="comment">// 遍历跳表</span></span><br><span class="line">        <span class="keyword">if</span> (update[i]-&gt;level[i].forward == x) &#123; <span class="comment">// 下一个是要删除的节点(直接关联)</span></span><br><span class="line">            update[i]-&gt;level[i].span += x-&gt;level[i].span - <span class="number">1</span>; <span class="comment">// 扩展span间隔值</span></span><br><span class="line">            update[i]-&gt;level[i].forward = x-&gt;level[i].forward; <span class="comment">// 链表移除节点</span></span><br><span class="line">        &#125; <span class="keyword">else</span> &#123; <span class="comment">// 不直接关联(上层链表)</span></span><br><span class="line">            update[i]-&gt;level[i].span -= <span class="number">1</span>; <span class="comment">// 减少span间隔值即可</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (x-&gt;level[<span class="number">0</span>].forward) &#123; <span class="comment">// 后面有值的话</span></span><br><span class="line">        x-&gt;level[<span class="number">0</span>].forward-&gt;backward = x-&gt;backward; <span class="comment">// 修正下一个节点的后退节点</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        zsl-&gt;tail = x-&gt;backward; <span class="comment">// 修改结尾</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">while</span>(zsl-&gt;level &gt; <span class="number">1</span> &amp;&amp; zsl-&gt;header-&gt;level[zsl-&gt;level<span class="number">-1</span>].forward == <span class="literal">NULL</span>) <span class="comment">// 当上层链表为空时</span></span><br><span class="line">        zsl-&gt;level--; <span class="comment">// 减少跳表层级</span></span><br><span class="line">    zsl-&gt;length--; <span class="comment">// 修改跳表实际长度</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-zslDelete-zskiplist-zsl-double-score-robj-obj"><a href="#int-zslDelete-zskiplist-zsl-double-score-robj-obj" class="headerlink" title="int zslDelete(zskiplist *zsl, double score, robj *obj);"></a><code>int zslDelete(zskiplist *zsl, double score, robj *obj);</code></h3><h4 id="功能-7"><a href="#功能-7" class="headerlink" title="功能"></a>功能</h4><p>根据积分和对象删除跳表节点</p>
+<h4 id="源码-7"><a href="#源码-7" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Delete an element with matching score/object from the skiplist. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">zslDelete</span><span class="params">(zskiplist *zsl, <span class="keyword">double</span> score, robj *obj)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123; <span class="comment">// 倒序遍历</span></span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp;</span><br><span class="line">            (x-&gt;level[i].forward-&gt;score &lt; score ||</span><br><span class="line">                (x-&gt;level[i].forward-&gt;score == score &amp;&amp;</span><br><span class="line">                compareStringObjects(x-&gt;level[i].forward-&gt;obj,obj) &lt; <span class="number">0</span>)))</span><br><span class="line">            x = x-&gt;level[i].forward;</span><br><span class="line">        update[i] = x; <span class="comment">// 查找所有待处理及节点的前置节点</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">/* We may have multiple elements with the same score, what we need</span></span><br><span class="line"><span class="comment">     * is to find the element with both the right score and object. */</span></span><br><span class="line">    x = x-&gt;level[<span class="number">0</span>].forward; <span class="comment">// 获取到待删除节点本身</span></span><br><span class="line">    <span class="keyword">if</span> (x &amp;&amp; score == x-&gt;score &amp;&amp; equalStringObjects(x-&gt;obj,obj)) &#123; <span class="comment">// 保证是==而不是&gt;</span></span><br><span class="line">        zslDeleteNode(zsl, x, update); <span class="comment">// 删除节点的跳表关系</span></span><br><span class="line">        zslFreeNode(x); <span class="comment">// 释放内存</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>; <span class="comment">// 返回成功</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>; <span class="comment">/* not found */</span> <span class="comment">// 返回失败</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-int-zslValueGteMin-double-value-zrangespec-spec"><a href="#static-int-zslValueGteMin-double-value-zrangespec-spec" class="headerlink" title="static int zslValueGteMin(double value, zrangespec *spec);"></a><code>static int zslValueGteMin(double value, zrangespec *spec);</code></h3><h4 id="功能-8"><a href="#功能-8" class="headerlink" title="功能"></a>功能</h4><p>判断值是否大于(等于)最小范围</p>
+<h4 id="源码-8"><a href="#源码-8" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> <span class="title">zslValueGteMin</span><span class="params">(<span class="keyword">double</span> value, zrangespec *spec)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> spec-&gt;minex ? (value &gt; spec-&gt;min) : (value &gt;= spec-&gt;min);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-zslValueLteMax-double-value-zrangespec-spec"><a href="#int-zslValueLteMax-double-value-zrangespec-spec" class="headerlink" title="int zslValueLteMax(double value, zrangespec *spec);"></a><code>int zslValueLteMax(double value, zrangespec *spec);</code></h3><h4 id="功能-9"><a href="#功能-9" class="headerlink" title="功能"></a>功能</h4><p>判断值是否小于(等于)最大范围</p>
+<h4 id="源码-9"><a href="#源码-9" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">zslValueLteMax</span><span class="params">(<span class="keyword">double</span> value, zrangespec *spec)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> spec-&gt;maxex ? (value &lt; spec-&gt;max) : (value &lt;= spec-&gt;max);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="int-zslIsInRange-zskiplist-zsl-zrangespec-range"><a href="#int-zslIsInRange-zskiplist-zsl-zrangespec-range" class="headerlink" title="int zslIsInRange(zskiplist *zsl, zrangespec *range);"></a><code>int zslIsInRange(zskiplist *zsl, zrangespec *range);</code></h3><h4 id="功能-10"><a href="#功能-10" class="headerlink" title="功能"></a>功能</h4><p>判断跳表是否在给定范围内</p>
+<h4 id="源码-10"><a href="#源码-10" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Returns if there is a part of the zset is in range. */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">zslIsInRange</span><span class="params">(zskiplist *zsl, zrangespec *range)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *x;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Test for ranges that will always be empty. */</span></span><br><span class="line">    <span class="keyword">if</span> (range-&gt;min &gt; range-&gt;max ||</span><br><span class="line">            (range-&gt;min == range-&gt;max &amp;&amp; (range-&gt;minex || range-&gt;maxex))) <span class="comment">// 范围本身就是空,不可能在范围内</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    x = zsl-&gt;tail;</span><br><span class="line">    <span class="keyword">if</span> (x == <span class="literal">NULL</span> || !zslValueGteMin(x-&gt;score,range)) <span class="comment">// 两端校验</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    x = zsl-&gt;header-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line">    <span class="keyword">if</span> (x == <span class="literal">NULL</span> || !zslValueLteMax(x-&gt;score,range))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="zskiplistNode-zslFirstInRange-zskiplist-zsl-zrangespec-range"><a href="#zskiplistNode-zslFirstInRange-zskiplist-zsl-zrangespec-range" class="headerlink" title="zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range);"></a><code>zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range);</code></h3><h4 id="功能-11"><a href="#功能-11" class="headerlink" title="功能"></a>功能</h4><p>获取到跳表第一个在范围内的元素</p>
+<h4 id="源码-11"><a href="#源码-11" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Find the first node that is contained in the specified range.</span></span><br><span class="line"><span class="comment"> * Returns NULL when no element is contained in the range. */</span></span><br><span class="line"><span class="function">zskiplistNode *<span class="title">zslFirstInRange</span><span class="params">(zskiplist *zsl, zrangespec *range)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *x;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* If everything is out of range, return early. */</span></span><br><span class="line">    <span class="keyword">if</span> (!zslIsInRange(zsl,range)) <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123; <span class="comment">// 遍历找到第一个大于最小值的元素</span></span><br><span class="line">        <span class="comment">/* Go forward while *OUT* of range. */</span></span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp;</span><br><span class="line">            !zslValueGteMin(x-&gt;level[i].forward-&gt;score,range))</span><br><span class="line">                x = x-&gt;level[i].forward;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* This is an inner range, so the next node cannot be NULL. */</span></span><br><span class="line">    x = x-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line">    serverAssert(x != <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Check if score &lt;= max. */</span></span><br><span class="line">    <span class="keyword">if</span> (!zslValueLteMax(x-&gt;score,range)) <span class="keyword">return</span> <span class="literal">NULL</span>; <span class="comment">// 判断是否小于最大值</span></span><br><span class="line">    <span class="keyword">return</span> x;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="zskiplistNode-zslLastInRange-zskiplist-zsl-zrangespec-range"><a href="#zskiplistNode-zslLastInRange-zskiplist-zsl-zrangespec-range" class="headerlink" title="zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range);"></a><code>zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range);</code></h3><h4 id="功能-12"><a href="#功能-12" class="headerlink" title="功能"></a>功能</h4><p>获取最后一个在给定范围内的元素</p>
+<h4 id="源码-12"><a href="#源码-12" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Find the last node that is contained in the specified range.</span></span><br><span class="line"><span class="comment"> * Returns NULL when no element is contained in the range. */</span></span><br><span class="line"><span class="function">zskiplistNode *<span class="title">zslLastInRange</span><span class="params">(zskiplist *zsl, zrangespec *range)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *x;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* If everything is out of range, return early. */</span></span><br><span class="line">    <span class="keyword">if</span> (!zslIsInRange(zsl,range)) <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123; <span class="comment">// 遍历找到最后一个小于最大值的元素</span></span><br><span class="line">        <span class="comment">/* Go forward while *IN* range. */</span></span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp;</span><br><span class="line">            zslValueLteMax(x-&gt;level[i].forward-&gt;score,range))</span><br><span class="line">                x = x-&gt;level[i].forward;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* This is an inner range, so this node cannot be NULL. */</span></span><br><span class="line">    serverAssert(x != <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Check if score &gt;= min. */</span></span><br><span class="line">    <span class="keyword">if</span> (!zslValueGteMin(x-&gt;score,range)) <span class="keyword">return</span> <span class="literal">NULL</span>; <span class="comment">// 判断是否大于最小值</span></span><br><span class="line">    <span class="keyword">return</span> x;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-long-zslDeleteRangeByScore-zskiplist-zsl-zrangespec-range-dict-dict"><a href="#unsigned-long-zslDeleteRangeByScore-zskiplist-zsl-zrangespec-range-dict-dict" class="headerlink" title="unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec *range, dict *dict);"></a><code>unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec *range, dict *dict);</code></h3><h4 id="功能-13"><a href="#功能-13" class="headerlink" title="功能"></a>功能</h4><p>根据分数范围删除跳表内的元素<br>dict是同时删除dict内的记录</p>
+<h4 id="源码-13"><a href="#源码-13" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Delete all the elements with score between min and max from the skiplist.</span></span><br><span class="line"><span class="comment"> * Min and max are inclusive, so a score &gt;= min || score &lt;= max is deleted.</span></span><br><span class="line"><span class="comment"> * Note that this function takes the reference to the hash table view of the</span></span><br><span class="line"><span class="comment"> * sorted set, in order to remove the elements from the hash table too. */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="title">zslDeleteRangeByScore</span><span class="params">(zskiplist *zsl, zrangespec *range, dict *dict)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> removed = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123;</span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp; (range-&gt;minex ?</span><br><span class="line">            x-&gt;level[i].forward-&gt;score &lt;= range-&gt;min :</span><br><span class="line">            x-&gt;level[i].forward-&gt;score &lt; range-&gt;min))</span><br><span class="line">                x = x-&gt;level[i].forward;</span><br><span class="line">        update[i] = x;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Current node is the last with score &lt; or &lt;= min. */</span></span><br><span class="line">    x = x-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Delete nodes while in range. */</span></span><br><span class="line">    <span class="keyword">while</span> (x &amp;&amp;</span><br><span class="line">           (range-&gt;maxex ? x-&gt;score &lt; range-&gt;max : x-&gt;score &lt;= range-&gt;max))</span><br><span class="line">    &#123;</span><br><span class="line">        zskiplistNode *next = x-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line">        zslDeleteNode(zsl,x,update);</span><br><span class="line">        dictDelete(dict,x-&gt;obj);</span><br><span class="line">        zslFreeNode(x);</span><br><span class="line">        removed++;</span><br><span class="line">        x = next;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> removed;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-long-zslDeleteRangeByLex-zskiplist-zsl-zlexrangespec-range-dict-dict"><a href="#unsigned-long-zslDeleteRangeByLex-zskiplist-zsl-zlexrangespec-range-dict-dict" class="headerlink" title="unsigned long zslDeleteRangeByLex(zskiplist *zsl, zlexrangespec *range, dict *dict);"></a><code>unsigned long zslDeleteRangeByLex(zskiplist *zsl, zlexrangespec *range, dict *dict);</code></h3><h4 id="功能-14"><a href="#功能-14" class="headerlink" title="功能"></a>功能</h4><p>根据范围对象删除跳表元素<br>dict是同时删除dict内的记录</p>
+<h4 id="源码-14"><a href="#源码-14" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="title">zslDeleteRangeByLex</span><span class="params">(zskiplist *zsl, zlexrangespec *range, dict *dict)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> removed = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123;</span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp;</span><br><span class="line">            !zslLexValueGteMin(x-&gt;level[i].forward-&gt;obj,range))</span><br><span class="line">                x = x-&gt;level[i].forward;</span><br><span class="line">        update[i] = x;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Current node is the last with score &lt; or &lt;= min. */</span></span><br><span class="line">    x = x-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Delete nodes while in range. */</span></span><br><span class="line">    <span class="keyword">while</span> (x &amp;&amp; zslLexValueLteMax(x-&gt;obj,range)) &#123;</span><br><span class="line">        zskiplistNode *next = x-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line">        zslDeleteNode(zsl,x,update);</span><br><span class="line">        dictDelete(dict,x-&gt;obj);</span><br><span class="line">        zslFreeNode(x);</span><br><span class="line">        removed++;</span><br><span class="line">        x = next;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> removed;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-long-zslDeleteRangeByRank-zskiplist-zsl-unsigned-int-start-unsigned-int-end-dict-dict"><a href="#unsigned-long-zslDeleteRangeByRank-zskiplist-zsl-unsigned-int-start-unsigned-int-end-dict-dict" class="headerlink" title="unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned int end, dict *dict);"></a><code>unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned int end, dict *dict);</code></h3><h4 id="功能-15"><a href="#功能-15" class="headerlink" title="功能"></a>功能</h4><p>根据rank的起始和结束位置删除跳表数据<br>dict是同时删除dict内的记录</p>
+<h4 id="源码-15"><a href="#源码-15" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Delete all the elements with rank between start and end from the skiplist.</span></span><br><span class="line"><span class="comment"> * Start and end are inclusive. Note that start and end need to be 1-based */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="title">zslDeleteRangeByRank</span><span class="params">(zskiplist *zsl, <span class="keyword">unsigned</span> <span class="keyword">int</span> start, <span class="keyword">unsigned</span> <span class="keyword">int</span> end, dict *dict)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> traversed = <span class="number">0</span>, removed = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123;</span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp; (traversed + x-&gt;level[i].span) &lt; start) &#123;</span><br><span class="line">            traversed += x-&gt;level[i].span;</span><br><span class="line">            x = x-&gt;level[i].forward;</span><br><span class="line">        &#125;</span><br><span class="line">        update[i] = x;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    traversed++;</span><br><span class="line">    x = x-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line">    <span class="keyword">while</span> (x &amp;&amp; traversed &lt;= end) &#123;</span><br><span class="line">        zskiplistNode *next = x-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line">        zslDeleteNode(zsl,x,update);</span><br><span class="line">        dictDelete(dict,x-&gt;obj);</span><br><span class="line">        zslFreeNode(x);</span><br><span class="line">        removed++;</span><br><span class="line">        traversed++;</span><br><span class="line">        x = next;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> removed;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="unsigned-long-zslGetRank-zskiplist-zsl-double-score-robj-o"><a href="#unsigned-long-zslGetRank-zskiplist-zsl-double-score-robj-o" class="headerlink" title="unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);"></a><code>unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);</code></h3><h4 id="功能-16"><a href="#功能-16" class="headerlink" title="功能"></a>功能</h4><p>根据积分和对象查找在跳表中的rank信息<br>不存在则返回0</p>
+<h4 id="源码-16"><a href="#源码-16" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Find the rank for an element by both score and key.</span></span><br><span class="line"><span class="comment"> * Returns 0 when the element cannot be found, rank otherwise.</span></span><br><span class="line"><span class="comment"> * Note that the rank is 1-based due to the span of zsl-&gt;header to the</span></span><br><span class="line"><span class="comment"> * first element. */</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="title">zslGetRank</span><span class="params">(zskiplist *zsl, <span class="keyword">double</span> score, robj *o)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *x;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> rank = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123;</span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp;</span><br><span class="line">            (x-&gt;level[i].forward-&gt;score &lt; score ||</span><br><span class="line">                (x-&gt;level[i].forward-&gt;score == score &amp;&amp;</span><br><span class="line">                compareStringObjects(x-&gt;level[i].forward-&gt;obj,o) &lt;= <span class="number">0</span>))) &#123;</span><br><span class="line">            rank += x-&gt;level[i].span;</span><br><span class="line">            x = x-&gt;level[i].forward;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* x might be equal to zsl-&gt;header, so test if obj is non-NULL */</span></span><br><span class="line">        <span class="keyword">if</span> (x-&gt;obj &amp;&amp; equalStringObjects(x-&gt;obj,o)) &#123;</span><br><span class="line">            <span class="keyword">return</span> rank;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="zskiplistNode-zslGetElementByRank-zskiplist-zsl-unsigned-long-rank"><a href="#zskiplistNode-zslGetElementByRank-zskiplist-zsl-unsigned-long-rank" class="headerlink" title="zskiplistNode* zslGetElementByRank(zskiplist *zsl, unsigned long rank);"></a><code>zskiplistNode* zslGetElementByRank(zskiplist *zsl, unsigned long rank);</code></h3><h4 id="功能-17"><a href="#功能-17" class="headerlink" title="功能"></a>功能</h4><p>根据rank信息查找对应的跳表元素</p>
+<h4 id="源码-17"><a href="#源码-17" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Finds an element by its rank. The rank argument needs to be 1-based. */</span></span><br><span class="line"><span class="function">zskiplistNode* <span class="title">zslGetElementByRank</span><span class="params">(zskiplist *zsl, <span class="keyword">unsigned</span> <span class="keyword">long</span> rank)</span> </span>&#123;</span><br><span class="line">    zskiplistNode *x;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> traversed = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line"></span><br><span class="line">    x = zsl-&gt;header;</span><br><span class="line">    <span class="keyword">for</span> (i = zsl-&gt;level<span class="number">-1</span>; i &gt;= <span class="number">0</span>; i--) &#123;</span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp; (traversed + x-&gt;level[i].span) &lt;= rank)</span><br><span class="line">        &#123;</span><br><span class="line">            traversed += x-&gt;level[i].span;</span><br><span class="line">            x = x-&gt;level[i].forward;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (traversed == rank) &#123;</span><br><span class="line">            <span class="keyword">return</span> x;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/database/" rel="tag"># database</a>
+          
+            <a href="/tags/redis/" rel="tag"># redis</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2018/05/04/redis-source-intset/" rel="next" title="Redis 源码分析-intset">
+                <i class="fa fa-chevron-left"></i> Redis 源码分析-intset
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2018/05/08/redis-source-ziplist/" rel="prev" title="Redis 源码分析-ziplist">
+                Redis 源码分析-ziplist <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+  
+    <div id="gitalk-container"></div>
+  
+
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <img class="site-author-image" itemprop="image"
+                src="/assets/images/avatar.png"
+                alt="" />
+            
+              <p class="site-author-name" itemprop="name"></p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/%20%7C%7C%20archive">
+                
+                    <span class="site-state-item-count">59</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">14</span>
+                    <span class="site-state-item-name">分类</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">29</span>
+                    <span class="site-state-item-name">标签</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+            <div class="links-of-author motion-element">
+              
+                <span class="links-of-author-item">
+                  <a href="https://github.com/caticat" target="_blank" title="GitHub"><i class="fa fa-fw fa-github"></i>GitHub</a>
+                  
+                </span>
+              
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%96%87%E4%BB%B6"><span class="nav-number">1.</span> <span class="nav-text">相关文件</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%A6%82%E5%BF%B5"><span class="nav-number">2.</span> <span class="nav-text">相关概念</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">3.</span> <span class="nav-text">数据结构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BB%E8%A6%81%E5%AE%8F"><span class="nav-number">4.</span> <span class="nav-text">主要宏</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E5%88%86%E6%9E%90"><span class="nav-number">5.</span> <span class="nav-text">函数分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#zskiplistNode-zslCreateNode-int-level-double-score-robj-obj"><span class="nav-number">5.1.</span> <span class="nav-text">zskiplistNode *zslCreateNode(int level, double score, robj *obj);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD"><span class="nav-number">5.1.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81"><span class="nav-number">5.1.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#zskiplist-zslCreate-void"><span class="nav-number">5.2.</span> <span class="nav-text">zskiplist *zslCreate(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-1"><span class="nav-number">5.2.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-1"><span class="nav-number">5.2.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zslFreeNode-zskiplistNode-node"><span class="nav-number">5.3.</span> <span class="nav-text">void zslFreeNode(zskiplistNode *node);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-2"><span class="nav-number">5.3.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-2"><span class="nav-number">5.3.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zslFree-zskiplist-zsl"><span class="nav-number">5.4.</span> <span class="nav-text">void zslFree(zskiplist *zsl);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-3"><span class="nav-number">5.4.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-3"><span class="nav-number">5.4.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-zslRandomLevel-void"><span class="nav-number">5.5.</span> <span class="nav-text">int zslRandomLevel(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-4"><span class="nav-number">5.5.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-4"><span class="nav-number">5.5.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#zskiplistNode-zslInsert-zskiplist-zsl-double-score-robj-obj"><span class="nav-number">5.6.</span> <span class="nav-text">zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-5"><span class="nav-number">5.6.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-5"><span class="nav-number">5.6.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zslDeleteNode-zskiplist-zsl-zskiplistNode-x-zskiplistNode-update"><span class="nav-number">5.7.</span> <span class="nav-text">void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-6"><span class="nav-number">5.7.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-6"><span class="nav-number">5.7.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-zslDelete-zskiplist-zsl-double-score-robj-obj"><span class="nav-number">5.8.</span> <span class="nav-text">int zslDelete(zskiplist *zsl, double score, robj *obj);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-7"><span class="nav-number">5.8.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-7"><span class="nav-number">5.8.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-int-zslValueGteMin-double-value-zrangespec-spec"><span class="nav-number">5.9.</span> <span class="nav-text">static int zslValueGteMin(double value, zrangespec *spec);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-8"><span class="nav-number">5.9.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-8"><span class="nav-number">5.9.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-zslValueLteMax-double-value-zrangespec-spec"><span class="nav-number">5.10.</span> <span class="nav-text">int zslValueLteMax(double value, zrangespec *spec);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-9"><span class="nav-number">5.10.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-9"><span class="nav-number">5.10.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#int-zslIsInRange-zskiplist-zsl-zrangespec-range"><span class="nav-number">5.11.</span> <span class="nav-text">int zslIsInRange(zskiplist *zsl, zrangespec *range);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-10"><span class="nav-number">5.11.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-10"><span class="nav-number">5.11.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#zskiplistNode-zslFirstInRange-zskiplist-zsl-zrangespec-range"><span class="nav-number">5.12.</span> <span class="nav-text">zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-11"><span class="nav-number">5.12.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-11"><span class="nav-number">5.12.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#zskiplistNode-zslLastInRange-zskiplist-zsl-zrangespec-range"><span class="nav-number">5.13.</span> <span class="nav-text">zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-12"><span class="nav-number">5.13.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-12"><span class="nav-number">5.13.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-long-zslDeleteRangeByScore-zskiplist-zsl-zrangespec-range-dict-dict"><span class="nav-number">5.14.</span> <span class="nav-text">unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec *range, dict *dict);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-13"><span class="nav-number">5.14.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-13"><span class="nav-number">5.14.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-long-zslDeleteRangeByLex-zskiplist-zsl-zlexrangespec-range-dict-dict"><span class="nav-number">5.15.</span> <span class="nav-text">unsigned long zslDeleteRangeByLex(zskiplist *zsl, zlexrangespec *range, dict *dict);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-14"><span class="nav-number">5.15.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-14"><span class="nav-number">5.15.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-long-zslDeleteRangeByRank-zskiplist-zsl-unsigned-int-start-unsigned-int-end-dict-dict"><span class="nav-number">5.16.</span> <span class="nav-text">unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned int end, dict *dict);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-15"><span class="nav-number">5.16.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-15"><span class="nav-number">5.16.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unsigned-long-zslGetRank-zskiplist-zsl-double-score-robj-o"><span class="nav-number">5.17.</span> <span class="nav-text">unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-16"><span class="nav-number">5.17.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-16"><span class="nav-number">5.17.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#zskiplistNode-zslGetElementByRank-zskiplist-zsl-unsigned-long-rank"><span class="nav-number">5.18.</span> <span class="nav-text">zskiplistNode* zslGetElementByRank(zskiplist *zsl, unsigned long rank);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-17"><span class="nav-number">5.18.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-17"><span class="nav-number">5.18.2.</span> <span class="nav-text">源码</span></a></li></ol></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2018 &mdash; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate"> 
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Pan</span>
+
+  
+
+  
+</div>
+
+
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/theme-next/hexo-theme-next">NexT.Gemini</a> v6.1.0</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="site-uv" title="总访客量">
+      <i class="fa fa-user"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="site-pv" title="总访问量">
+      <i class="fa fa-eye"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/three.min.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/canvas_lines.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.1.0"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=6.1.0"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.1.0"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.1.0"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.1.0"></script>
+
+
+
+  
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+    <script type="text/javascript">
+    var gitalk = new Gitalk({
+      clientID: 'e8443a1845703a67513c',
+      clientSecret: '0b0efab598ef8cc3657c3853b3c0189da301fb99',
+      repo: 'caticat.github.io',
+      owner: 'caticat',
+      admin: ['caticat'],
+      id: location.pathname,
+      distractionFreeMode: 'false'
+    })
+    gitalk.render('gitalk-container')           
+  </script>
+
+
+  
+
+  <script type="text/javascript">
+    // Popup Window;
+    var isfetched = false;
+    var isXml = true;
+    // Search DB path;
+    var search_path = "search.xml";
+    if (search_path.length === 0) {
+      search_path = "search.xml";
+    } else if (/json$/i.test(search_path)) {
+      isXml = false;
+    }
+    var path = "/" + search_path;
+    // monitor main search box;
+
+    var onPopupClose = function (e) {
+      $('.popup').hide();
+      $('#local-search-input').val('');
+      $('.search-result-list').remove();
+      $('#no-result').remove();
+      $(".local-search-pop-overlay").remove();
+      $('body').css('overflow', '');
+    }
+
+    function proceedsearch() {
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay"></div>')
+        .css('overflow', 'hidden');
+      $('.search-popup-overlay').click(onPopupClose);
+      $('.popup').toggle();
+      var $localSearchInput = $('#local-search-input');
+      $localSearchInput.attr("autocapitalize", "none");
+      $localSearchInput.attr("autocorrect", "off");
+      $localSearchInput.focus();
+    }
+
+    // search function;
+    var searchFunc = function(path, search_id, content_id) {
+      'use strict';
+
+      // start loading animation
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay">' +
+          '<div id="search-loading-icon">' +
+          '<i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>' +
+          '</div>' +
+          '</div>')
+        .css('overflow', 'hidden');
+      $("#search-loading-icon").css('margin', '20% auto 0 auto').css('text-align', 'center');
+
+      
+
+      $.ajax({
+        url: path,
+        dataType: isXml ? "xml" : "json",
+        async: true,
+        success: function(res) {
+          // get the contents from search data
+          isfetched = true;
+          $('.popup').detach().appendTo('.header-inner');
+          var datas = isXml ? $("entry", res).map(function() {
+            return {
+              title: $("title", this).text(),
+              content: $("content",this).text(),
+              url: $("url" , this).text()
+            };
+          }).get() : res;
+          var input = document.getElementById(search_id);
+          var resultContent = document.getElementById(content_id);
+          var inputEventFunction = function() {
+            var searchText = input.value.trim().toLowerCase();
+            var keywords = searchText.split(/[\s\-]+/);
+            if (keywords.length > 1) {
+              keywords.push(searchText);
+            }
+            var resultItems = [];
+            if (searchText.length > 0) {
+              // perform local searching
+              datas.forEach(function(data) {
+                var isMatch = false;
+                var hitCount = 0;
+                var searchTextCount = 0;
+                var title = data.title.trim();
+                var titleInLowerCase = title.toLowerCase();
+                var content = data.content.trim().replace(/<[^>]+>/g,"");
+                
+                var contentInLowerCase = content.toLowerCase();
+                var articleUrl = decodeURIComponent(data.url);
+                var indexOfTitle = [];
+                var indexOfContent = [];
+                // only match articles with not empty titles
+                if(title != '') {
+                  keywords.forEach(function(keyword) {
+                    function getIndexByWord(word, text, caseSensitive) {
+                      var wordLen = word.length;
+                      if (wordLen === 0) {
+                        return [];
+                      }
+                      var startPosition = 0, position = [], index = [];
+                      if (!caseSensitive) {
+                        text = text.toLowerCase();
+                        word = word.toLowerCase();
+                      }
+                      while ((position = text.indexOf(word, startPosition)) > -1) {
+                        index.push({position: position, word: word});
+                        startPosition = position + wordLen;
+                      }
+                      return index;
+                    }
+
+                    indexOfTitle = indexOfTitle.concat(getIndexByWord(keyword, titleInLowerCase, false));
+                    indexOfContent = indexOfContent.concat(getIndexByWord(keyword, contentInLowerCase, false));
+                  });
+                  if (indexOfTitle.length > 0 || indexOfContent.length > 0) {
+                    isMatch = true;
+                    hitCount = indexOfTitle.length + indexOfContent.length;
+                  }
+                }
+
+                // show search results
+
+                if (isMatch) {
+                  // sort index by position of keyword
+
+                  [indexOfTitle, indexOfContent].forEach(function (index) {
+                    index.sort(function (itemLeft, itemRight) {
+                      if (itemRight.position !== itemLeft.position) {
+                        return itemRight.position - itemLeft.position;
+                      } else {
+                        return itemLeft.word.length - itemRight.word.length;
+                      }
+                    });
+                  });
+
+                  // merge hits into slices
+
+                  function mergeIntoSlice(text, start, end, index) {
+                    var item = index[index.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    var hits = [];
+                    var searchTextCountInSlice = 0;
+                    while (position + word.length <= end && index.length != 0) {
+                      if (word === searchText) {
+                        searchTextCountInSlice++;
+                      }
+                      hits.push({position: position, length: word.length});
+                      var wordEnd = position + word.length;
+
+                      // move to next position of hit
+
+                      index.pop();
+                      while (index.length != 0) {
+                        item = index[index.length - 1];
+                        position = item.position;
+                        word = item.word;
+                        if (wordEnd > position) {
+                          index.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                    searchTextCount += searchTextCountInSlice;
+                    return {
+                      hits: hits,
+                      start: start,
+                      end: end,
+                      searchTextCount: searchTextCountInSlice
+                    };
+                  }
+
+                  var slicesOfTitle = [];
+                  if (indexOfTitle.length != 0) {
+                    slicesOfTitle.push(mergeIntoSlice(title, 0, title.length, indexOfTitle));
+                  }
+
+                  var slicesOfContent = [];
+                  while (indexOfContent.length != 0) {
+                    var item = indexOfContent[indexOfContent.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    // cut out 100 characters
+                    var start = position - 20;
+                    var end = position + 80;
+                    if(start < 0){
+                      start = 0;
+                    }
+                    if (end < position + word.length) {
+                      end = position + word.length;
+                    }
+                    if(end > content.length){
+                      end = content.length;
+                    }
+                    slicesOfContent.push(mergeIntoSlice(content, start, end, indexOfContent));
+                  }
+
+                  // sort slices in content by search text's count and hits' count
+
+                  slicesOfContent.sort(function (sliceLeft, sliceRight) {
+                    if (sliceLeft.searchTextCount !== sliceRight.searchTextCount) {
+                      return sliceRight.searchTextCount - sliceLeft.searchTextCount;
+                    } else if (sliceLeft.hits.length !== sliceRight.hits.length) {
+                      return sliceRight.hits.length - sliceLeft.hits.length;
+                    } else {
+                      return sliceLeft.start - sliceRight.start;
+                    }
+                  });
+
+                  // select top N slices in content
+
+                  var upperBound = parseInt('1');
+                  if (upperBound >= 0) {
+                    slicesOfContent = slicesOfContent.slice(0, upperBound);
+                  }
+
+                  // highlight title and content
+
+                  function highlightKeyword(text, slice) {
+                    var result = '';
+                    var prevEnd = slice.start;
+                    slice.hits.forEach(function (hit) {
+                      result += text.substring(prevEnd, hit.position);
+                      var end = hit.position + hit.length;
+                      result += '<b class="search-keyword">' + text.substring(hit.position, end) + '</b>';
+                      prevEnd = end;
+                    });
+                    result += text.substring(prevEnd, slice.end);
+                    return result;
+                  }
+
+                  var resultItem = '';
+
+                  if (slicesOfTitle.length != 0) {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + highlightKeyword(title, slicesOfTitle[0]) + "</a>";
+                  } else {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + title + "</a>";
+                  }
+
+                  slicesOfContent.forEach(function (slice) {
+                    resultItem += "<a href='" + articleUrl + "'>" +
+                      "<p class=\"search-result\">" + highlightKeyword(content, slice) +
+                      "...</p>" + "</a>";
+                  });
+
+                  resultItem += "</li>";
+                  resultItems.push({
+                    item: resultItem,
+                    searchTextCount: searchTextCount,
+                    hitCount: hitCount,
+                    id: resultItems.length
+                  });
+                }
+              })
+            };
+            if (keywords.length === 1 && keywords[0] === "") {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-search fa-5x" /></div>'
+            } else if (resultItems.length === 0) {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-frown-o fa-5x" /></div>'
+            } else {
+              resultItems.sort(function (resultLeft, resultRight) {
+                if (resultLeft.searchTextCount !== resultRight.searchTextCount) {
+                  return resultRight.searchTextCount - resultLeft.searchTextCount;
+                } else if (resultLeft.hitCount !== resultRight.hitCount) {
+                  return resultRight.hitCount - resultLeft.hitCount;
+                } else {
+                  return resultRight.id - resultLeft.id;
+                }
+              });
+              var searchResultList = '<ul class=\"search-result-list\">';
+              resultItems.forEach(function (result) {
+                searchResultList += result.item;
+              })
+              searchResultList += "</ul>";
+              resultContent.innerHTML = searchResultList;
+            }
+          }
+
+          if ('auto' === 'auto') {
+            input.addEventListener('input', inputEventFunction);
+          } else {
+            $('.search-icon').click(inputEventFunction);
+            input.addEventListener('keypress', function (event) {
+              if (event.keyCode === 13) {
+                inputEventFunction();
+              }
+            });
+          }
+
+          // remove loading animation
+          $(".local-search-pop-overlay").remove();
+          $('body').css('overflow', '');
+
+          proceedsearch();
+        }
+      });
+    }
+
+    // handle and trigger popup window;
+    $('.popup-trigger').click(function(e) {
+      e.stopPropagation();
+      if (isfetched === false) {
+        searchFunc(path, 'local-search-input', 'local-search-result');
+      } else {
+        proceedsearch();
+      };
+    });
+
+    $('.popup-btn-close').click(onPopupClose);
+    $('.popup').click(function(e){
+      e.stopPropagation();
+    });
+    $(document).on('keyup', function (event) {
+      var shouldDismissSearchPopup = event.which === 27 &&
+        $('.search-popup').is(':visible');
+      if (shouldDismissSearchPopup) {
+        onPopupClose();
+      }
+    });
+  </script>
+
+
+
+
+
+  
+
+  
+  <script src="https://cdn1.lncld.net/static/js/av-core-mini-0.6.4.js"></script>
+  <script>AV.initialize("BVY1wsbMOInpuLTE6Xks1hEo-gzGzoHsz", "9t3lzissKkIRVwunmGW4bgkp");</script>
+  <script>
+    function showTime(Counter) {
+      var query = new AV.Query(Counter);
+      var entries = [];
+      var $visitors = $(".leancloud_visitors");
+
+      $visitors.each(function () {
+        entries.push( $(this).attr("id").trim() );
+      });
+
+      query.containedIn('url', entries);
+      query.find()
+        .done(function (results) {
+          var COUNT_CONTAINER_REF = '.leancloud-visitors-count';
+
+          if (results.length === 0) {
+            $visitors.find(COUNT_CONTAINER_REF).text(0);
+            return;
+          }
+
+          for (var i = 0; i < results.length; i++) {
+            var item = results[i];
+            var url = item.get('url');
+            var time = item.get('time');
+            var element = document.getElementById(url);
+
+            $(element).find(COUNT_CONTAINER_REF).text(time);
+          }
+          for(var i = 0; i < entries.length; i++) {
+            var url = entries[i];
+            var element = document.getElementById(url);
+            var countSpan = $(element).find(COUNT_CONTAINER_REF);
+            if( countSpan.text() == '') {
+              countSpan.text(0);
+            }
+          }
+        })
+        .fail(function (object, error) {
+          console.log("Error: " + error.code + " " + error.message);
+        });
+    }
+
+    function addCount(Counter) {
+      var $visitors = $(".leancloud_visitors");
+      var url = $visitors.attr('id').trim();
+      var title = $visitors.attr('data-flag-title').trim();
+      var query = new AV.Query(Counter);
+
+      query.equalTo("url", url);
+      query.find({
+        success: function(results) {
+          if (results.length > 0) {
+            var counter = results[0];
+            counter.fetchWhenSave(true);
+            counter.increment("time");
+            
+            counter.save(null, {
+              success: function(counter) {
+                
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(counter.get('time'));
+                
+              },
+              error: function(counter, error) {
+                console.log('Failed to save Visitor num, with error message: ' + error.message);
+              }
+            });
+          } else {
+            
+              var newcounter = new Counter();
+              /* Set ACL */
+              var acl = new AV.ACL();
+              acl.setPublicReadAccess(true);
+              acl.setPublicWriteAccess(true);
+              newcounter.setACL(acl);
+              /* End Set ACL */
+              newcounter.set("title", title);
+              newcounter.set("url", url);
+              newcounter.set("time", 1);
+              newcounter.save(null, {
+                success: function(newcounter) {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(newcounter.get('time'));
+                },
+                error: function(newcounter, error) {
+                  console.log('Failed to create');
+                }
+              });
+            
+          }
+        },
+        error: function(error) {
+          console.log('Error:' + error.code + " " + error.message);
+        }
+      });
+    }
+
+    $(function() {
+      var Counter = AV.Object.extend("Counter");
+      if ($('.leancloud_visitors').length == 1) {
+        addCount(Counter);
+      } else if ($('.post-title-link').length > 1) {
+        showTime(Counter);
+      }
+    });
+  </script>
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+<script src="/live2dw/lib/L2Dwidget.min.js?094cbace49a39548bed64abff5988b05"></script><script>L2Dwidget.init({"pluginModelPath":"assets/","model":{"jsonPath":"/live2dw/assets/haru01.model.json"},"display":{"position":"right","width":150,"height":300},"mobile":{"show":false},"log":false,"pluginJsPath":"lib/","pluginRootPath":"live2dw/","tagMode":false});</script></body>
+</html>

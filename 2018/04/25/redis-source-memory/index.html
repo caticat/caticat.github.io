@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.1.0" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.1.0">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.1.0" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '',
+    scheme: 'Gemini',
+    version: '6.1.0',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="在所有申请的指定长度的内存前加了一个sizeof(size_t)的长度用于记录实际申请的内存长度,方便统计内存使用占用和内存使用状态分析 相关文件 zmalloc.h zmalloc.c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis 源码分析-内存管理">
+<meta property="og:url" content="https://caticat.github.io/2018/04/25/redis-source-memory/index.html">
+<meta property="og:site_name" content="杂记">
+<meta property="og:description" content="在所有申请的指定长度的内存前加了一个sizeof(size_t)的长度用于记录实际申请的内存长度,方便统计内存使用占用和内存使用状态分析 相关文件 zmalloc.h zmalloc.c">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2018-04-25T16:37:45.000Z">
+<meta property="article:modified_time" content="2020-11-13T04:01:07.415Z">
+<meta property="article:author" content="Pan">
+<meta property="article:tag" content="database">
+<meta property="article:tag" content="redis">
+<meta name="twitter:card" content="summary">
+
+
+
+
+
+
+  <link rel="canonical" href="https://caticat.github.io/2018/04/25/redis-source-memory/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Redis 源码分析-内存管理 | 杂记</title>
+  
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"> 
+
+<div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">杂记</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle">不乱</p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+          
+  <li class="menu-item menu-item-home">
+    <a href="/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />首页</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-tags">
+    <a href="/tags/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-tags"></i> <br />标签</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-categories">
+    <a href="/categories/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />分类</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-archives">
+    <a href="/archives/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />归档</a>
+</li>
+
+      
+
+      
+        <li class="menu-item menu-item-search">
+          
+            <a href="javascript:;" class="popup-trigger">
+          
+            
+              <i class="menu-item-icon fa fa-search fa-fw"></i> <br />搜索</a>
+        </li>
+      
+    </ul>
+  
+
+  
+
+  
+    <div class="site-search">
+      
+  <div class="popup search-popup local-search-popup">
+  <div class="local-search-header clearfix">
+    <span class="search-icon">
+      <i class="fa fa-search"></i>
+    </span>
+    <span class="popup-btn-close">
+      <i class="fa fa-times-circle"></i>
+    </span>
+    <div class="local-search-input-wrapper">
+      <input autocomplete="off"
+             placeholder="搜索..." spellcheck="false"
+             type="text" id="local-search-input">
+    </div>
+  </div>
+  <div id="local-search-result"></div>
+</div>
+
+
+
+    </div>
+  
+</nav>
+
+
+  
+
+
+
+ </div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://caticat.github.io/2018/04/25/redis-source-memory/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/assets/images/avatar.png">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="杂记">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Redis 源码分析-内存管理</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2018-04-25T16:37:45+00:00">2018-04-25</time>
+            
+
+            
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/" itemprop="url" rel="index"><span itemprop="name">redis</span></a></span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/source/" itemprop="url" rel="index"><span itemprop="name">source</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+             <span id="/2018/04/25/redis-source-memory/" class="leancloud_visitors" data-flag-title="Redis 源码分析-内存管理">
+               <span class="post-meta-divider">|</span>
+               <span class="post-meta-item-icon">
+                 <i class="fa fa-eye"></i>
+               </span>
+               
+                 <span class="post-meta-item-text">阅读次数：</span>
+               
+                 <span class="leancloud-visitors-count"></span>
+             </span>
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>在所有申请的指定长度的内存前加了一个<code>sizeof(size_t)</code>的长度<br>用于记录实际申请的内存长度,<br>方便统计内存使用占用和内存使用状态分析</p>
+<h2 id="相关文件"><a href="#相关文件" class="headerlink" title="相关文件"></a>相关文件</h2><ul>
+<li>zmalloc.h</li>
+<li>zmalloc.c</li>
+</ul>
+<a id="more"></a>
+
+<h2 id="相关概念"><a href="#相关概念" class="headerlink" title="相关概念"></a>相关概念</h2><ul>
+<li>RSS<br>  Resident Set Size,进程实际锁驻留在内存的空间大小,不包括交换区数据(swap)值<br>  RSS = Shared_Clean + Shared_Dirty + Private_Clean + Private_Dirty<ul>
+<li>Shared_Clean<br>  多进程共享内存,且其内容未被任意进程修改</li>
+<li>Shared_Dirty<br>  多进程共享内存,且其内容已经被某个程序修改</li>
+<li>Private_Clean<br>  进程独享内存,且其内容未被修改</li>
+<li>Private_Dirty<br>  进程独享内存,且其内容已经被修改</li>
+</ul>
+</li>
+<li>内存碎片<ul>
+<li>内部碎片<br>  已经被分配给程序进程的,不能被操作系统使用的内存</li>
+<li>外部碎片<br>  没有分配给程序进程,但是因为连续空间过小导致无法使用的内存</li>
+</ul>
+</li>
+<li><code>/proc/self/*</code>与<code>/proc/$pid/</code><br>  系统使用<code>self</code>来代替<code>$pid</code>,实际上两个目录一样的.不同的进程调用<code>self</code>是对应的文件夹连接就是自己的<code>$pid</code>文件夹连接</li>
+<li>共享内存<br>  在Linux中主要是<code>.so</code>动态库文件,还有一些其他内容</li>
+<li>内存对齐<br>  系统版本与CPU同时决定对齐的位数<br>  x86是4,x64是8<br>  gcc中申请的内存默认都是要对齐的,不足位数的需要凑齐为对齐位数的整数倍<br>  (可以使用<code>__attribute__ ((__packed__))</code>来强制不对齐)</li>
+</ul>
+<h2 id="函数分析"><a href="#函数分析" class="headerlink" title="函数分析"></a>函数分析</h2><h3 id="void-zmalloc-size-t-size"><a href="#void-zmalloc-size-t-size" class="headerlink" title="void *zmalloc(size_t size);"></a><code>void *zmalloc(size_t size);</code></h3><h4 id="功能"><a href="#功能" class="headerlink" title="功能"></a>功能</h4><p>申请指定大小的内存,不会初始化</p>
+<h4 id="源码"><a href="#源码" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">size_t</span> used_memory = <span class="number">0</span>;</span><br><span class="line"><span class="function"><span class="keyword">void</span> *<span class="title">zmalloc</span><span class="params">(<span class="keyword">size_t</span> size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">void</span> *ptr = <span class="built_in">malloc</span>(size+PREFIX_SIZE); <span class="comment">// `PREFIX_SIZE`就是`sizeof(size_t)`</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!ptr) zmalloc_oom_handler(size); <span class="comment">// `zmalloc_oom_handler`是当`malloc`失败是Redis的处理机制</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> HAVE_MALLOC_SIZE <span class="comment">// `HAVE_MALLOC_SIZE`在GCC中是0,不会定义</span></span></span><br><span class="line">    update_zmalloc_stat_alloc(zmalloc_size(ptr));</span><br><span class="line">    <span class="keyword">return</span> ptr;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">    *((<span class="keyword">size_t</span>*)ptr) = size; <span class="comment">// 将申请的内存的开头用于记录申请的内存的大小(不包括记录这个长度所用的PREFIX_SIZE长度)</span></span><br><span class="line">    update_zmalloc_stat_alloc(size+PREFIX_SIZE); <span class="comment">// 更新并记录当前使用的内存大小(实际是更新字段`used_memory`的值)</span></span><br><span class="line">    <span class="keyword">return</span> (<span class="keyword">char</span>*)ptr+PREFIX_SIZE; <span class="comment">// 返回新申请的去掉记录长度的字符数组的指针</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="static-void-zmalloc-default-oom-size-t-size"><a href="#static-void-zmalloc-default-oom-size-t-size" class="headerlink" title="static void zmalloc_default_oom(size_t size);"></a><code>static void zmalloc_default_oom(size_t size);</code></h3><h4 id="功能-1"><a href="#功能-1" class="headerlink" title="功能"></a>功能</h4><p>Redis默认内存<code>Out Of Memory</code>的处理函数</p>
+<h4 id="源码-1"><a href="#源码-1" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">void</span> <span class="title">zmalloc_default_oom</span><span class="params">(<span class="keyword">size_t</span> size)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">&quot;zmalloc: Out of memory trying to allocate %zu bytes\n&quot;</span>,</span><br><span class="line">        size); <span class="comment">// 记录申请了多少内存失败了</span></span><br><span class="line">    fflush(<span class="built_in">stderr</span>); <span class="comment">// 立刻写入日志系统</span></span><br><span class="line">    <span class="built_in">abort</span>(); <span class="comment">// 抛出异常,终止程序继续运行</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="define-update-zmalloc-stat-alloc-n"><a href="#define-update-zmalloc-stat-alloc-n" class="headerlink" title="#define update_zmalloc_stat_alloc(__n)"></a><code>#define update_zmalloc_stat_alloc(__n)</code></h3><h4 id="功能-2"><a href="#功能-2" class="headerlink" title="功能"></a>功能</h4><p>记录实际使用的内存的大小(增加)</p>
+<h4 id="源码-2"><a href="#源码-2" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> update_zmalloc_stat_alloc(__n) do &#123; \</span></span><br><span class="line">    <span class="keyword">size_t</span> _n = (__n); \</span><br><span class="line">    <span class="keyword">if</span> (_n&amp;(<span class="keyword">sizeof</span>(<span class="keyword">long</span>)<span class="number">-1</span>)) _n += <span class="keyword">sizeof</span>(<span class="keyword">long</span>)-(_n&amp;(<span class="keyword">sizeof</span>(<span class="keyword">long</span>)<span class="number">-1</span>)); \ <span class="comment">// 这里是保证used_memory记录的申请的内存的尺寸是8的倍数(malloc本身已经保证申请的内存是8位对齐了)(另外在gcc中64位系统的size_t就是long unsigned int)</span></span><br><span class="line">    <span class="keyword">if</span> (zmalloc_thread_safe) &#123; \ <span class="comment">// 是否启用线程安全功能</span></span><br><span class="line">        update_zmalloc_stat_add(_n); \ <span class="comment">// 以线程安全的方式增加used_memory</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; \</span><br><span class="line">        used_memory += _n; \ <span class="comment">// 不考虑线程安全直接增加used_memory</span></span><br><span class="line">    &#125; \</span><br><span class="line">&#125; <span class="keyword">while</span>(<span class="number">0</span>) <span class="comment">// 这种写法的两个好处:1:代替`&#123;&#125;`可以限制变量作用域;2:可以随时使用break来达到goto的效果</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="define-update-zmalloc-stat-add-n"><a href="#define-update-zmalloc-stat-add-n" class="headerlink" title="#define update_zmalloc_stat_add(__n)"></a><code>#define update_zmalloc_stat_add(__n)</code></h3><h4 id="功能-3"><a href="#功能-3" class="headerlink" title="功能"></a>功能</h4><p>保证线程安全的增加<code>used_memory</code></p>
+<h4 id="源码-3"><a href="#源码-3" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> update_zmalloc_stat_add(__n) do &#123; \</span></span><br><span class="line">    pthread_mutex_lock(&amp;used_memory_mutex); \ <span class="comment">// 加锁</span></span><br><span class="line">    used_memory += (__n); \ <span class="comment">// 修改used_memory</span></span><br><span class="line">    pthread_mutex_unlock(&amp;used_memory_mutex); \ <span class="comment">// 解锁</span></span><br><span class="line">&#125; <span class="keyword">while</span>(<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="void-zcalloc-size-t-size"><a href="#void-zcalloc-size-t-size" class="headerlink" title="void *zcalloc(size_t size);"></a><code>void *zcalloc(size_t size);</code></h3><h4 id="功能-4"><a href="#功能-4" class="headerlink" title="功能"></a>功能</h4><p>同<code>zmalloc</code>一样,但是会将所申请的所有内存初始化为0</p>
+<h4 id="源码-4"><a href="#源码-4" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> *<span class="title">zcalloc</span><span class="params">(<span class="keyword">size_t</span> size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">void</span> *ptr = <span class="built_in">calloc</span>(<span class="number">1</span>, size+PREFIX_SIZE); <span class="comment">// 申请并清空带长度的连续内存</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!ptr) zmalloc_oom_handler(size); <span class="comment">// 内存不足处理</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> HAVE_MALLOC_SIZE</span></span><br><span class="line">    update_zmalloc_stat_alloc(zmalloc_size(ptr));</span><br><span class="line">    <span class="keyword">return</span> ptr;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">    *((<span class="keyword">size_t</span>*)ptr) = size; <span class="comment">// 记录实际数据长度(无PREFIX_SIZE长度)</span></span><br><span class="line">    update_zmalloc_stat_alloc(size+PREFIX_SIZE); <span class="comment">// 记录实际内存申请数量</span></span><br><span class="line">    <span class="keyword">return</span> (<span class="keyword">char</span>*)ptr+PREFIX_SIZE; <span class="comment">// 返回申请的地址指针</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="void-zrealloc-void-ptr-size-t-size"><a href="#void-zrealloc-void-ptr-size-t-size" class="headerlink" title="void *zrealloc(void *ptr, size_t size);"></a><code>void *zrealloc(void *ptr, size_t size);</code></h3><h4 id="功能-5"><a href="#功能-5" class="headerlink" title="功能"></a>功能</h4><p>重新分配指针的数据的长度,不会初始化新增数据</p>
+<h4 id="源码-5"><a href="#源码-5" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> *<span class="title">zrealloc</span><span class="params">(<span class="keyword">void</span> *ptr, <span class="keyword">size_t</span> size)</span> </span>&#123;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> HAVE_MALLOC_SIZE</span></span><br><span class="line">    <span class="keyword">void</span> *realptr; <span class="comment">// 声明ptr的实际指针(就是从记录长度的头地址开始计算)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">    <span class="keyword">size_t</span> oldsize; <span class="comment">// 原始大小</span></span><br><span class="line">    <span class="keyword">void</span> *newptr; <span class="comment">// 新分配的指针</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (ptr == <span class="literal">NULL</span>) <span class="keyword">return</span> zmalloc(size); <span class="comment">// 如果原指针是空,则同重新申请地址</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> HAVE_MALLOC_SIZE <span class="comment">// 特殊平台操作</span></span></span><br><span class="line">    oldsize = zmalloc_size(ptr);</span><br><span class="line">    newptr = <span class="built_in">realloc</span>(ptr,size);</span><br><span class="line">    <span class="keyword">if</span> (!newptr) zmalloc_oom_handler(size);</span><br><span class="line"></span><br><span class="line">    update_zmalloc_stat_free(oldsize);</span><br><span class="line">    update_zmalloc_stat_alloc(zmalloc_size(newptr));</span><br><span class="line">    <span class="keyword">return</span> newptr;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">    realptr = (<span class="keyword">char</span>*)ptr-PREFIX_SIZE; <span class="comment">// 获取实际指针</span></span><br><span class="line">    oldsize = *((<span class="keyword">size_t</span>*)realptr); <span class="comment">// 获取实际指针指向的数据长度</span></span><br><span class="line">    newptr = <span class="built_in">realloc</span>(realptr,size+PREFIX_SIZE); <span class="comment">// 重新非配指针所指的连续内存的大小(分两种情况,1:新需要内存比原内存小或一样,则数据截断;3:新数据长度比旧数据长度长,则申请新数据长度的连续内存,将旧数据按顺序拷贝到新地址中,自动释放旧数据地址指针,返回新地址指针)</span></span><br><span class="line">    <span class="keyword">if</span> (!newptr) zmalloc_oom_handler(size); <span class="comment">// 内存分配失败处理</span></span><br><span class="line"></span><br><span class="line">    *((<span class="keyword">size_t</span>*)newptr) = size; <span class="comment">// 记录新长度</span></span><br><span class="line">    update_zmalloc_stat_free(oldsize); <span class="comment">// 维护used_memory长度(没有PREFIX_SIZE的原因是一减一增无需处理,是减少计算的优化)</span></span><br><span class="line">    update_zmalloc_stat_alloc(size); <span class="comment">// 维护used_memory长度</span></span><br><span class="line">    <span class="keyword">return</span> (<span class="keyword">char</span>*)newptr+PREFIX_SIZE; <span class="comment">// 返回新指针</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="define-update-zmalloc-stat-free-n"><a href="#define-update-zmalloc-stat-free-n" class="headerlink" title="#define update_zmalloc_stat_free(__n)"></a><code>#define update_zmalloc_stat_free(__n)</code></h3><h4 id="功能-6"><a href="#功能-6" class="headerlink" title="功能"></a>功能</h4><p>记录实际使用的内存的大小(减少)</p>
+<h4 id="源码-6"><a href="#源码-6" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> update_zmalloc_stat_free(__n) do &#123; \</span></span><br><span class="line">    <span class="keyword">size_t</span> _n = (__n); \ <span class="comment">// 记录实际使用的内存</span></span><br><span class="line">    <span class="keyword">if</span> (_n&amp;(<span class="keyword">sizeof</span>(<span class="keyword">long</span>)<span class="number">-1</span>)) _n += <span class="keyword">sizeof</span>(<span class="keyword">long</span>)-(_n&amp;(<span class="keyword">sizeof</span>(<span class="keyword">long</span>)<span class="number">-1</span>)); \ <span class="comment">// 保证内存的对齐</span></span><br><span class="line">    <span class="keyword">if</span> (zmalloc_thread_safe) &#123; \ <span class="comment">// 是否启用线程安全接口</span></span><br><span class="line">        update_zmalloc_stat_sub(_n); \ <span class="comment">// 线程安全的减少used_memory</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; \ <span class="comment">// 非线程安全操作</span></span><br><span class="line">        used_memory -= _n; \ <span class="comment">// 减少used_memory</span></span><br><span class="line">    &#125; \</span><br><span class="line">&#125; <span class="keyword">while</span>(<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="define-update-zmalloc-stat-sub-n"><a href="#define-update-zmalloc-stat-sub-n" class="headerlink" title="#define update_zmalloc_stat_sub(__n)"></a><code>#define update_zmalloc_stat_sub(__n)</code></h3><h4 id="功能-7"><a href="#功能-7" class="headerlink" title="功能"></a>功能</h4><p>保证线程安全的减小<code>used_memory</code></p>
+<h4 id="源码-7"><a href="#源码-7" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> update_zmalloc_stat_sub(__n) do &#123; \</span></span><br><span class="line">    pthread_mutex_lock(&amp;used_memory_mutex); \ <span class="comment">// 上锁</span></span><br><span class="line">    used_memory -= (__n); \ <span class="comment">// 减少used_memory</span></span><br><span class="line">    pthread_mutex_unlock(&amp;used_memory_mutex); \ <span class="comment">// 解锁</span></span><br><span class="line">&#125; <span class="keyword">while</span>(<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="void-zfree-void-ptr"><a href="#void-zfree-void-ptr" class="headerlink" title="void zfree(void *ptr);"></a><code>void zfree(void *ptr);</code></h3><h4 id="功能-8"><a href="#功能-8" class="headerlink" title="功能"></a>功能</h4><p>释放指针空间</p>
+<h4 id="源码-8"><a href="#源码-8" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">zfree</span><span class="params">(<span class="keyword">void</span> *ptr)</span> </span>&#123;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> HAVE_MALLOC_SIZE</span></span><br><span class="line">    <span class="keyword">void</span> *realptr; <span class="comment">// 实际指针</span></span><br><span class="line">    <span class="keyword">size_t</span> oldsize; <span class="comment">// 实际指针数据长度</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (ptr == <span class="literal">NULL</span>) <span class="keyword">return</span>; <span class="comment">// 空指针直接返回</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> HAVE_MALLOC_SIZE</span></span><br><span class="line">    update_zmalloc_stat_free(zmalloc_size(ptr));</span><br><span class="line">    <span class="built_in">free</span>(ptr);</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">    realptr = (<span class="keyword">char</span>*)ptr-PREFIX_SIZE; <span class="comment">// 获取实际指针</span></span><br><span class="line">    oldsize = *((<span class="keyword">size_t</span>*)realptr); <span class="comment">// 获取实际指针数据长度</span></span><br><span class="line">    update_zmalloc_stat_free(oldsize+PREFIX_SIZE); <span class="comment">// 维护used_memory,减少实际使用内存的记录值</span></span><br><span class="line">    <span class="built_in">free</span>(realptr); <span class="comment">// 释放实际指针</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="char-zstrdup-const-char-s"><a href="#char-zstrdup-const-char-s" class="headerlink" title="char *zstrdup(const char *s);"></a><code>char *zstrdup(const char *s);</code></h3><h4 id="功能-9"><a href="#功能-9" class="headerlink" title="功能"></a>功能</h4><p>字符串复制(因为复制的原始字符串结尾是什么,这里复制出的字符串结尾就是什么(一定是<code>\0</code>))</p>
+<h4 id="源码-9"><a href="#源码-9" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">char</span> *<span class="title">zstrdup</span><span class="params">(<span class="keyword">const</span> <span class="keyword">char</span> *s)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">size_t</span> l = <span class="built_in">strlen</span>(s)+<span class="number">1</span>; <span class="comment">// 获取字符串长度+1</span></span><br><span class="line">    <span class="keyword">char</span> *p = zmalloc(l); <span class="comment">// 申请新的连续内存</span></span><br><span class="line"></span><br><span class="line">    <span class="built_in">memcpy</span>(p,s,l); <span class="comment">// 复制字符串</span></span><br><span class="line">    <span class="keyword">return</span> p; <span class="comment">// 返回新的字符串指针</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="size-t-zmalloc-used-memory-void"><a href="#size-t-zmalloc-used-memory-void" class="headerlink" title="size_t zmalloc_used_memory(void);"></a><code>size_t zmalloc_used_memory(void);</code></h3><h4 id="功能-10"><a href="#功能-10" class="headerlink" title="功能"></a>功能</h4><p>获取当前已经使用的内存大小(字节)(used_memory的值)</p>
+<h4 id="源码-10"><a href="#源码-10" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">zmalloc_used_memory</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">size_t</span> um;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (zmalloc_thread_safe) &#123; <span class="comment">// 是否使用线程安全接口</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> defined(__ATOMIC_RELAXED) || defined(HAVE_ATOMIC)</span></span><br><span class="line">        um = update_zmalloc_stat_add(<span class="number">0</span>);</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">        pthread_mutex_lock(&amp;used_memory_mutex); <span class="comment">// 上锁</span></span><br><span class="line">        um = used_memory; <span class="comment">// 复制</span></span><br><span class="line">        pthread_mutex_unlock(&amp;used_memory_mutex); <span class="comment">// 解锁</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span> &#123; <span class="comment">// 非线程安全</span></span><br><span class="line">        um = used_memory; <span class="comment">// 复制</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> um; <span class="comment">// 返回当前内存用量</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-zmalloc-enable-thread-safeness-void"><a href="#void-zmalloc-enable-thread-safeness-void" class="headerlink" title="void zmalloc_enable_thread_safeness(void);"></a><code>void zmalloc_enable_thread_safeness(void);</code></h3><h4 id="功能-11"><a href="#功能-11" class="headerlink" title="功能"></a>功能</h4><p>开启内存用量记录的线程安全模式(开启后所有内存用量记录都会上锁)</p>
+<h4 id="源码-11"><a href="#源码-11" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">int</span> zmalloc_thread_safe = <span class="number">0</span>;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">zmalloc_enable_thread_safeness</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    zmalloc_thread_safe = <span class="number">1</span>; <span class="comment">// 标记为真</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-zmalloc-set-oom-handler-void-oom-handler-size-t"><a href="#void-zmalloc-set-oom-handler-void-oom-handler-size-t" class="headerlink" title="void zmalloc_set_oom_handler(void (*oom_handler)(size_t));"></a><code>void zmalloc_set_oom_handler(void (*oom_handler)(size_t));</code></h3><h4 id="功能-12"><a href="#功能-12" class="headerlink" title="功能"></a>功能</h4><p>设置内存溢出触发时的回调函数</p>
+<h4 id="源码-12"><a href="#源码-12" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="title">void</span> <span class="params">(*zmalloc_oom_handler)</span><span class="params">(<span class="keyword">size_t</span>)</span> </span>= zmalloc_default_oom;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">zmalloc_set_oom_handler</span><span class="params">(<span class="keyword">void</span> (*oom_handler)(<span class="keyword">size_t</span>))</span> </span>&#123;</span><br><span class="line">    zmalloc_oom_handler = oom_handler; <span class="comment">// 设置函数指针</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="float-zmalloc-get-fragmentation-ratio-size-t-rss"><a href="#float-zmalloc-get-fragmentation-ratio-size-t-rss" class="headerlink" title="float zmalloc_get_fragmentation_ratio(size_t rss);"></a><code>float zmalloc_get_fragmentation_ratio(size_t rss);</code></h3><h4 id="功能-13"><a href="#功能-13" class="headerlink" title="功能"></a>功能</h4><p>获取当前Redis的内存碎片率(内部碎片)</p>
+<h4 id="源码-13"><a href="#源码-13" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">float</span> <span class="title">zmalloc_get_fragmentation_ratio</span><span class="params">(<span class="keyword">size_t</span> rss)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> (<span class="keyword">float</span>)rss/zmalloc_used_memory(); <span class="comment">// rss是程序占用的所有内存(文件内存+匿名内存)(包含共享内存)(rss内存有重复统计的可能);zmalloc_used_memory就是实际redis通过命令分配出去的内存大小;这里的rss值使用过`serverCron`函数循环调用更新的</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="size-t-zmalloc-get-rss-void"><a href="#size-t-zmalloc-get-rss-void" class="headerlink" title="size_t zmalloc_get_rss(void);"></a><code>size_t zmalloc_get_rss(void);</code></h3><h4 id="功能-14"><a href="#功能-14" class="headerlink" title="功能"></a>功能</h4><p>通过系统信息截取到当前Redis使用的RSS(Resident Set Size)(进程实际所驻留在内存的空间大小,不包括交换区数据(swap))值</p>
+<h4 id="源码-14"><a href="#源码-14" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">zmalloc_get_rss</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> page = sysconf(_SC_PAGESIZE); <span class="comment">// 获取单个页面大小</span></span><br><span class="line">    <span class="keyword">size_t</span> rss; <span class="comment">// 声明rss</span></span><br><span class="line">    <span class="keyword">char</span> buf[<span class="number">4096</span>]; <span class="comment">// 数据缓冲</span></span><br><span class="line">    <span class="keyword">char</span> filename[<span class="number">256</span>]; <span class="comment">// 文件名</span></span><br><span class="line">    <span class="keyword">int</span> fd, count;</span><br><span class="line">    <span class="keyword">char</span> *p, *x;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">snprintf</span>(filename,<span class="number">256</span>,<span class="string">&quot;/proc/%d/stat&quot;</span>,getpid()); <span class="comment">// 拼接Redis的相关进程状态文件名</span></span><br><span class="line">    <span class="keyword">if</span> ((fd = open(filename,O_RDONLY)) == <span class="number">-1</span>) <span class="keyword">return</span> <span class="number">0</span>; <span class="comment">// 打开状态文件</span></span><br><span class="line">    <span class="keyword">if</span> (read(fd,buf,<span class="number">4096</span>) &lt;= <span class="number">0</span>) &#123; <span class="comment">// 读取全部状态文件</span></span><br><span class="line">        close(fd);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    close(fd); <span class="comment">// 关闭fd</span></span><br><span class="line"></span><br><span class="line">    p = buf;</span><br><span class="line">    count = <span class="number">23</span>; <span class="comment">/* RSS is the 24th field in /proc/&lt;pid&gt;/stat */</span></span><br><span class="line">    <span class="keyword">while</span>(p &amp;&amp; count--) &#123; <span class="comment">// 获取文件中的rss的页面数量</span></span><br><span class="line">        p = <span class="built_in">strchr</span>(p,<span class="string">&#x27; &#x27;</span>);</span><br><span class="line">        <span class="keyword">if</span> (p) p++;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (!p) <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    x = <span class="built_in">strchr</span>(p,<span class="string">&#x27; &#x27;</span>);</span><br><span class="line">    <span class="keyword">if</span> (!x) <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    *x = <span class="string">&#x27;\0&#x27;</span>;</span><br><span class="line"></span><br><span class="line">    rss = strtoll(p,<span class="literal">NULL</span>,<span class="number">10</span>); <span class="comment">// 字符串转数字(10进制)</span></span><br><span class="line">    rss *= page; <span class="comment">// 程序占用总内存=单个页面尺寸*页面总数</span></span><br><span class="line">    <span class="keyword">return</span> rss;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="size-t-zmalloc-get-private-dirty-void"><a href="#size-t-zmalloc-get-private-dirty-void" class="headerlink" title="size_t zmalloc_get_private_dirty(void);"></a><code>size_t zmalloc_get_private_dirty(void);</code></h3><h4 id="功能-15"><a href="#功能-15" class="headerlink" title="功能"></a>功能</h4><p>获取当前Redis所有私有的已实际使用过的内存的大小(字节)</p>
+<h4 id="源码-15"><a href="#源码-15" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">zmalloc_get_private_dirty</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> zmalloc_get_smap_bytes_by_field(<span class="string">&quot;Private_Dirty:&quot;</span>); <span class="comment">// 获取&quot;Private_Dirty&quot;字段</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="size-t-zmalloc-get-smap-bytes-by-field-char-field"><a href="#size-t-zmalloc-get-smap-bytes-by-field-char-field" class="headerlink" title="size_t zmalloc_get_smap_bytes_by_field(char *field);"></a><code>size_t zmalloc_get_smap_bytes_by_field(char *field);</code></h3><h4 id="功能-16"><a href="#功能-16" class="headerlink" title="功能"></a>功能</h4><p>根据参数字段,在<code>/proc/self/smaps</code>中(就是当前进程的smaps文件)中查找对应的属性的值</p>
+<h4 id="源码-16"><a href="#源码-16" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">zmalloc_get_smap_bytes_by_field</span><span class="params">(<span class="keyword">char</span> *field)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">char</span> line[<span class="number">1024</span>];</span><br><span class="line">    <span class="keyword">size_t</span> bytes = <span class="number">0</span>;</span><br><span class="line">    FILE *fp = fopen(<span class="string">&quot;/proc/self/smaps&quot;</span>,<span class="string">&quot;r&quot;</span>); <span class="comment">// 打开状态文件</span></span><br><span class="line">    <span class="keyword">int</span> flen = <span class="built_in">strlen</span>(field);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!fp) <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">while</span>(fgets(line,<span class="keyword">sizeof</span>(line),fp) != <span class="literal">NULL</span>) &#123; <span class="comment">// 逐行读取</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">strncmp</span>(line,field,flen) == <span class="number">0</span>) &#123; <span class="comment">// 查找字段</span></span><br><span class="line">            <span class="keyword">char</span> *p = <span class="built_in">strchr</span>(line,<span class="string">&#x27;k&#x27;</span>);</span><br><span class="line">            <span class="keyword">if</span> (p) &#123;</span><br><span class="line">                *p = <span class="string">&#x27;\0&#x27;</span>;</span><br><span class="line">                bytes += strtol(line+flen,<span class="literal">NULL</span>,<span class="number">10</span>) * <span class="number">1024</span>; <span class="comment">// 将字符串转化为数字并从`kb`转化成`byte`</span></span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    fclose(fp); <span class="comment">// 关闭文件</span></span><br><span class="line">    <span class="keyword">return</span> bytes;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="size-t-zmalloc-get-memory-size-void"><a href="#size-t-zmalloc-get-memory-size-void" class="headerlink" title="size_t zmalloc_get_memory_size(void);"></a><code>size_t zmalloc_get_memory_size(void);</code></h3><h4 id="功能-17"><a href="#功能-17" class="headerlink" title="功能"></a>功能</h4><p>简洁的获得物理内存尺寸(单位:字节)(跨平台)</p>
+<h4 id="源码-17"><a href="#源码-17" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">zmalloc_get_memory_size</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> defined(__unix__) || defined(__unix) || defined(unix) || \</span></span><br><span class="line">    (defined(__APPLE__) &amp;&amp; defined(__MACH__))</span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> defined(CTL_HW) &amp;&amp; (defined(HW_MEMSIZE) || defined(HW_PHYSMEM64))</span></span><br><span class="line">    <span class="keyword">int</span> mib[<span class="number">2</span>];</span><br><span class="line">    mib[<span class="number">0</span>] = CTL_HW;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> defined(HW_MEMSIZE)</span></span><br><span class="line">    mib[<span class="number">1</span>] = HW_MEMSIZE;            <span class="comment">/* OSX. --------------------- */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">elif</span> defined(HW_PHYSMEM64)</span></span><br><span class="line">    mib[<span class="number">1</span>] = HW_PHYSMEM64;          <span class="comment">/* NetBSD, OpenBSD. --------- */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">    <span class="keyword">int64_t</span> size = <span class="number">0</span>;               <span class="comment">/* 64-bit */</span></span><br><span class="line">    <span class="keyword">size_t</span> len = <span class="keyword">sizeof</span>(size);</span><br><span class="line">    <span class="keyword">if</span> (sysctl( mib, <span class="number">2</span>, &amp;size, &amp;len, <span class="literal">NULL</span>, <span class="number">0</span>) == <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">return</span> (<span class="keyword">size_t</span>)size;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0L</span>;          <span class="comment">/* Failed? */</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">elif</span> defined(_SC_PHYS_PAGES) &amp;&amp; defined(_SC_PAGESIZE)</span></span><br><span class="line">    <span class="comment">/* FreeBSD, Linux, OpenBSD, and Solaris. -------------------- */</span></span><br><span class="line">    <span class="keyword">return</span> (<span class="keyword">size_t</span>)sysconf(_SC_PHYS_PAGES) * (<span class="keyword">size_t</span>)sysconf(_SC_PAGESIZE);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">elif</span> defined(CTL_HW) &amp;&amp; (defined(HW_PHYSMEM) || defined(HW_REALMEM))</span></span><br><span class="line">    <span class="comment">/* DragonFly BSD, FreeBSD, NetBSD, OpenBSD, and OSX. -------- */</span></span><br><span class="line">    <span class="keyword">int</span> mib[<span class="number">2</span>];</span><br><span class="line">    mib[<span class="number">0</span>] = CTL_HW;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> defined(HW_REALMEM)</span></span><br><span class="line">    mib[<span class="number">1</span>] = HW_REALMEM;        <span class="comment">/* FreeBSD. ----------------- */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">elif</span> defined(HW_PYSMEM)</span></span><br><span class="line">    mib[<span class="number">1</span>] = HW_PHYSMEM;        <span class="comment">/* Others. ------------------ */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> size = <span class="number">0</span>;      <span class="comment">/* 32-bit */</span></span><br><span class="line">    <span class="keyword">size_t</span> len = <span class="keyword">sizeof</span>(size);</span><br><span class="line">    <span class="keyword">if</span> (sysctl(mib, <span class="number">2</span>, &amp;size, &amp;len, <span class="literal">NULL</span>, <span class="number">0</span>) == <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">return</span> (<span class="keyword">size_t</span>)size;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0L</span>;          <span class="comment">/* Failed? */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0L</span>;          <span class="comment">/* Unknown method to get the data. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0L</span>;          <span class="comment">/* Unknown OS. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="void-zlibc-free-void-ptr"><a href="#void-zlibc-free-void-ptr" class="headerlink" title="void zlibc_free(void *ptr);"></a><code>void zlibc_free(void *ptr);</code></h3><h4 id="功能-18"><a href="#功能-18" class="headerlink" title="功能"></a>功能</h4><p>libc的free的封装(This is useful for instance to free results obtained by backtrace_symbols())</p>
+<h4 id="源码-18"><a href="#源码-18" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">zlibc_free</span><span class="params">(<span class="keyword">void</span> *ptr)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">free</span>(ptr);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="size-t-zmalloc-size-void-ptr"><a href="#size-t-zmalloc-size-void-ptr" class="headerlink" title="size_t zmalloc_size(void *ptr)"></a><code>size_t zmalloc_size(void *ptr)</code></h3><h4 id="功能-19"><a href="#功能-19" class="headerlink" title="功能"></a>功能</h4><p>获取按位对齐后的实际指针所占用的总内存量</p>
+<h4 id="源码-19"><a href="#源码-19" class="headerlink" title="源码"></a>源码</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">zmalloc_size</span><span class="params">(<span class="keyword">void</span> *ptr)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">void</span> *realptr = (<span class="keyword">char</span>*)ptr-PREFIX_SIZE;</span><br><span class="line">    <span class="keyword">size_t</span> size = *((<span class="keyword">size_t</span>*)realptr);</span><br><span class="line">    <span class="comment">/* Assume at least that all the allocations are padded at sizeof(long) by</span></span><br><span class="line"><span class="comment">     * the underlying allocator. */</span></span><br><span class="line">    <span class="keyword">if</span> (size&amp;(<span class="keyword">sizeof</span>(<span class="keyword">long</span>)<span class="number">-1</span>)) size += <span class="keyword">sizeof</span>(<span class="keyword">long</span>)-(size&amp;(<span class="keyword">sizeof</span>(<span class="keyword">long</span>)<span class="number">-1</span>));</span><br><span class="line">    <span class="keyword">return</span> size+PREFIX_SIZE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/database/" rel="tag"># database</a>
+          
+            <a href="/tags/redis/" rel="tag"># redis</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2018/04/24/redis-client-1/" rel="next" title="1. Redis 客户端-客户端通信协议">
+                <i class="fa fa-chevron-left"></i> 1. Redis 客户端-客户端通信协议
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2018/04/26/c-memory-struct/" rel="prev" title="C语言-内存管理-结构体">
+                C语言-内存管理-结构体 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+  
+    <div id="gitalk-container"></div>
+  
+
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <img class="site-author-image" itemprop="image"
+                src="/assets/images/avatar.png"
+                alt="" />
+            
+              <p class="site-author-name" itemprop="name"></p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/%20%7C%7C%20archive">
+                
+                    <span class="site-state-item-count">59</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">14</span>
+                    <span class="site-state-item-name">分类</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">29</span>
+                    <span class="site-state-item-name">标签</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+            <div class="links-of-author motion-element">
+              
+                <span class="links-of-author-item">
+                  <a href="https://github.com/caticat" target="_blank" title="GitHub"><i class="fa fa-fw fa-github"></i>GitHub</a>
+                  
+                </span>
+              
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%96%87%E4%BB%B6"><span class="nav-number">1.</span> <span class="nav-text">相关文件</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E6%A6%82%E5%BF%B5"><span class="nav-number">2.</span> <span class="nav-text">相关概念</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E5%88%86%E6%9E%90"><span class="nav-number">3.</span> <span class="nav-text">函数分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zmalloc-size-t-size"><span class="nav-number">3.1.</span> <span class="nav-text">void *zmalloc(size_t size);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD"><span class="nav-number">3.1.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81"><span class="nav-number">3.1.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#static-void-zmalloc-default-oom-size-t-size"><span class="nav-number">3.2.</span> <span class="nav-text">static void zmalloc_default_oom(size_t size);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-1"><span class="nav-number">3.2.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-1"><span class="nav-number">3.2.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#define-update-zmalloc-stat-alloc-n"><span class="nav-number">3.3.</span> <span class="nav-text">#define update_zmalloc_stat_alloc(__n)</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-2"><span class="nav-number">3.3.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-2"><span class="nav-number">3.3.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#define-update-zmalloc-stat-add-n"><span class="nav-number">3.4.</span> <span class="nav-text">#define update_zmalloc_stat_add(__n)</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-3"><span class="nav-number">3.4.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-3"><span class="nav-number">3.4.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zcalloc-size-t-size"><span class="nav-number">3.5.</span> <span class="nav-text">void *zcalloc(size_t size);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-4"><span class="nav-number">3.5.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-4"><span class="nav-number">3.5.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zrealloc-void-ptr-size-t-size"><span class="nav-number">3.6.</span> <span class="nav-text">void *zrealloc(void *ptr, size_t size);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-5"><span class="nav-number">3.6.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-5"><span class="nav-number">3.6.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#define-update-zmalloc-stat-free-n"><span class="nav-number">3.7.</span> <span class="nav-text">#define update_zmalloc_stat_free(__n)</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-6"><span class="nav-number">3.7.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-6"><span class="nav-number">3.7.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#define-update-zmalloc-stat-sub-n"><span class="nav-number">3.8.</span> <span class="nav-text">#define update_zmalloc_stat_sub(__n)</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-7"><span class="nav-number">3.8.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-7"><span class="nav-number">3.8.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zfree-void-ptr"><span class="nav-number">3.9.</span> <span class="nav-text">void zfree(void *ptr);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-8"><span class="nav-number">3.9.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-8"><span class="nav-number">3.9.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#char-zstrdup-const-char-s"><span class="nav-number">3.10.</span> <span class="nav-text">char *zstrdup(const char *s);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-9"><span class="nav-number">3.10.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-9"><span class="nav-number">3.10.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size-t-zmalloc-used-memory-void"><span class="nav-number">3.11.</span> <span class="nav-text">size_t zmalloc_used_memory(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-10"><span class="nav-number">3.11.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-10"><span class="nav-number">3.11.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zmalloc-enable-thread-safeness-void"><span class="nav-number">3.12.</span> <span class="nav-text">void zmalloc_enable_thread_safeness(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-11"><span class="nav-number">3.12.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-11"><span class="nav-number">3.12.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zmalloc-set-oom-handler-void-oom-handler-size-t"><span class="nav-number">3.13.</span> <span class="nav-text">void zmalloc_set_oom_handler(void (*oom_handler)(size_t));</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-12"><span class="nav-number">3.13.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-12"><span class="nav-number">3.13.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#float-zmalloc-get-fragmentation-ratio-size-t-rss"><span class="nav-number">3.14.</span> <span class="nav-text">float zmalloc_get_fragmentation_ratio(size_t rss);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-13"><span class="nav-number">3.14.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-13"><span class="nav-number">3.14.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size-t-zmalloc-get-rss-void"><span class="nav-number">3.15.</span> <span class="nav-text">size_t zmalloc_get_rss(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-14"><span class="nav-number">3.15.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-14"><span class="nav-number">3.15.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size-t-zmalloc-get-private-dirty-void"><span class="nav-number">3.16.</span> <span class="nav-text">size_t zmalloc_get_private_dirty(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-15"><span class="nav-number">3.16.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-15"><span class="nav-number">3.16.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size-t-zmalloc-get-smap-bytes-by-field-char-field"><span class="nav-number">3.17.</span> <span class="nav-text">size_t zmalloc_get_smap_bytes_by_field(char *field);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-16"><span class="nav-number">3.17.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-16"><span class="nav-number">3.17.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size-t-zmalloc-get-memory-size-void"><span class="nav-number">3.18.</span> <span class="nav-text">size_t zmalloc_get_memory_size(void);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-17"><span class="nav-number">3.18.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-17"><span class="nav-number">3.18.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#void-zlibc-free-void-ptr"><span class="nav-number">3.19.</span> <span class="nav-text">void zlibc_free(void *ptr);</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-18"><span class="nav-number">3.19.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-18"><span class="nav-number">3.19.2.</span> <span class="nav-text">源码</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size-t-zmalloc-size-void-ptr"><span class="nav-number">3.20.</span> <span class="nav-text">size_t zmalloc_size(void *ptr)</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8A%9F%E8%83%BD-19"><span class="nav-number">3.20.1.</span> <span class="nav-text">功能</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%BA%90%E7%A0%81-19"><span class="nav-number">3.20.2.</span> <span class="nav-text">源码</span></a></li></ol></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2018 &mdash; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate"> 
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Pan</span>
+
+  
+
+  
+</div>
+
+
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/theme-next/hexo-theme-next">NexT.Gemini</a> v6.1.0</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="site-uv" title="总访客量">
+      <i class="fa fa-user"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="site-pv" title="总访问量">
+      <i class="fa fa-eye"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/three.min.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/canvas_lines.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.1.0"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=6.1.0"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.1.0"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.1.0"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.1.0"></script>
+
+
+
+  
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+    <script type="text/javascript">
+    var gitalk = new Gitalk({
+      clientID: 'e8443a1845703a67513c',
+      clientSecret: '0b0efab598ef8cc3657c3853b3c0189da301fb99',
+      repo: 'caticat.github.io',
+      owner: 'caticat',
+      admin: ['caticat'],
+      id: location.pathname,
+      distractionFreeMode: 'false'
+    })
+    gitalk.render('gitalk-container')           
+  </script>
+
+
+  
+
+  <script type="text/javascript">
+    // Popup Window;
+    var isfetched = false;
+    var isXml = true;
+    // Search DB path;
+    var search_path = "search.xml";
+    if (search_path.length === 0) {
+      search_path = "search.xml";
+    } else if (/json$/i.test(search_path)) {
+      isXml = false;
+    }
+    var path = "/" + search_path;
+    // monitor main search box;
+
+    var onPopupClose = function (e) {
+      $('.popup').hide();
+      $('#local-search-input').val('');
+      $('.search-result-list').remove();
+      $('#no-result').remove();
+      $(".local-search-pop-overlay").remove();
+      $('body').css('overflow', '');
+    }
+
+    function proceedsearch() {
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay"></div>')
+        .css('overflow', 'hidden');
+      $('.search-popup-overlay').click(onPopupClose);
+      $('.popup').toggle();
+      var $localSearchInput = $('#local-search-input');
+      $localSearchInput.attr("autocapitalize", "none");
+      $localSearchInput.attr("autocorrect", "off");
+      $localSearchInput.focus();
+    }
+
+    // search function;
+    var searchFunc = function(path, search_id, content_id) {
+      'use strict';
+
+      // start loading animation
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay">' +
+          '<div id="search-loading-icon">' +
+          '<i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>' +
+          '</div>' +
+          '</div>')
+        .css('overflow', 'hidden');
+      $("#search-loading-icon").css('margin', '20% auto 0 auto').css('text-align', 'center');
+
+      
+
+      $.ajax({
+        url: path,
+        dataType: isXml ? "xml" : "json",
+        async: true,
+        success: function(res) {
+          // get the contents from search data
+          isfetched = true;
+          $('.popup').detach().appendTo('.header-inner');
+          var datas = isXml ? $("entry", res).map(function() {
+            return {
+              title: $("title", this).text(),
+              content: $("content",this).text(),
+              url: $("url" , this).text()
+            };
+          }).get() : res;
+          var input = document.getElementById(search_id);
+          var resultContent = document.getElementById(content_id);
+          var inputEventFunction = function() {
+            var searchText = input.value.trim().toLowerCase();
+            var keywords = searchText.split(/[\s\-]+/);
+            if (keywords.length > 1) {
+              keywords.push(searchText);
+            }
+            var resultItems = [];
+            if (searchText.length > 0) {
+              // perform local searching
+              datas.forEach(function(data) {
+                var isMatch = false;
+                var hitCount = 0;
+                var searchTextCount = 0;
+                var title = data.title.trim();
+                var titleInLowerCase = title.toLowerCase();
+                var content = data.content.trim().replace(/<[^>]+>/g,"");
+                
+                var contentInLowerCase = content.toLowerCase();
+                var articleUrl = decodeURIComponent(data.url);
+                var indexOfTitle = [];
+                var indexOfContent = [];
+                // only match articles with not empty titles
+                if(title != '') {
+                  keywords.forEach(function(keyword) {
+                    function getIndexByWord(word, text, caseSensitive) {
+                      var wordLen = word.length;
+                      if (wordLen === 0) {
+                        return [];
+                      }
+                      var startPosition = 0, position = [], index = [];
+                      if (!caseSensitive) {
+                        text = text.toLowerCase();
+                        word = word.toLowerCase();
+                      }
+                      while ((position = text.indexOf(word, startPosition)) > -1) {
+                        index.push({position: position, word: word});
+                        startPosition = position + wordLen;
+                      }
+                      return index;
+                    }
+
+                    indexOfTitle = indexOfTitle.concat(getIndexByWord(keyword, titleInLowerCase, false));
+                    indexOfContent = indexOfContent.concat(getIndexByWord(keyword, contentInLowerCase, false));
+                  });
+                  if (indexOfTitle.length > 0 || indexOfContent.length > 0) {
+                    isMatch = true;
+                    hitCount = indexOfTitle.length + indexOfContent.length;
+                  }
+                }
+
+                // show search results
+
+                if (isMatch) {
+                  // sort index by position of keyword
+
+                  [indexOfTitle, indexOfContent].forEach(function (index) {
+                    index.sort(function (itemLeft, itemRight) {
+                      if (itemRight.position !== itemLeft.position) {
+                        return itemRight.position - itemLeft.position;
+                      } else {
+                        return itemLeft.word.length - itemRight.word.length;
+                      }
+                    });
+                  });
+
+                  // merge hits into slices
+
+                  function mergeIntoSlice(text, start, end, index) {
+                    var item = index[index.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    var hits = [];
+                    var searchTextCountInSlice = 0;
+                    while (position + word.length <= end && index.length != 0) {
+                      if (word === searchText) {
+                        searchTextCountInSlice++;
+                      }
+                      hits.push({position: position, length: word.length});
+                      var wordEnd = position + word.length;
+
+                      // move to next position of hit
+
+                      index.pop();
+                      while (index.length != 0) {
+                        item = index[index.length - 1];
+                        position = item.position;
+                        word = item.word;
+                        if (wordEnd > position) {
+                          index.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                    searchTextCount += searchTextCountInSlice;
+                    return {
+                      hits: hits,
+                      start: start,
+                      end: end,
+                      searchTextCount: searchTextCountInSlice
+                    };
+                  }
+
+                  var slicesOfTitle = [];
+                  if (indexOfTitle.length != 0) {
+                    slicesOfTitle.push(mergeIntoSlice(title, 0, title.length, indexOfTitle));
+                  }
+
+                  var slicesOfContent = [];
+                  while (indexOfContent.length != 0) {
+                    var item = indexOfContent[indexOfContent.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    // cut out 100 characters
+                    var start = position - 20;
+                    var end = position + 80;
+                    if(start < 0){
+                      start = 0;
+                    }
+                    if (end < position + word.length) {
+                      end = position + word.length;
+                    }
+                    if(end > content.length){
+                      end = content.length;
+                    }
+                    slicesOfContent.push(mergeIntoSlice(content, start, end, indexOfContent));
+                  }
+
+                  // sort slices in content by search text's count and hits' count
+
+                  slicesOfContent.sort(function (sliceLeft, sliceRight) {
+                    if (sliceLeft.searchTextCount !== sliceRight.searchTextCount) {
+                      return sliceRight.searchTextCount - sliceLeft.searchTextCount;
+                    } else if (sliceLeft.hits.length !== sliceRight.hits.length) {
+                      return sliceRight.hits.length - sliceLeft.hits.length;
+                    } else {
+                      return sliceLeft.start - sliceRight.start;
+                    }
+                  });
+
+                  // select top N slices in content
+
+                  var upperBound = parseInt('1');
+                  if (upperBound >= 0) {
+                    slicesOfContent = slicesOfContent.slice(0, upperBound);
+                  }
+
+                  // highlight title and content
+
+                  function highlightKeyword(text, slice) {
+                    var result = '';
+                    var prevEnd = slice.start;
+                    slice.hits.forEach(function (hit) {
+                      result += text.substring(prevEnd, hit.position);
+                      var end = hit.position + hit.length;
+                      result += '<b class="search-keyword">' + text.substring(hit.position, end) + '</b>';
+                      prevEnd = end;
+                    });
+                    result += text.substring(prevEnd, slice.end);
+                    return result;
+                  }
+
+                  var resultItem = '';
+
+                  if (slicesOfTitle.length != 0) {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + highlightKeyword(title, slicesOfTitle[0]) + "</a>";
+                  } else {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + title + "</a>";
+                  }
+
+                  slicesOfContent.forEach(function (slice) {
+                    resultItem += "<a href='" + articleUrl + "'>" +
+                      "<p class=\"search-result\">" + highlightKeyword(content, slice) +
+                      "...</p>" + "</a>";
+                  });
+
+                  resultItem += "</li>";
+                  resultItems.push({
+                    item: resultItem,
+                    searchTextCount: searchTextCount,
+                    hitCount: hitCount,
+                    id: resultItems.length
+                  });
+                }
+              })
+            };
+            if (keywords.length === 1 && keywords[0] === "") {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-search fa-5x" /></div>'
+            } else if (resultItems.length === 0) {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-frown-o fa-5x" /></div>'
+            } else {
+              resultItems.sort(function (resultLeft, resultRight) {
+                if (resultLeft.searchTextCount !== resultRight.searchTextCount) {
+                  return resultRight.searchTextCount - resultLeft.searchTextCount;
+                } else if (resultLeft.hitCount !== resultRight.hitCount) {
+                  return resultRight.hitCount - resultLeft.hitCount;
+                } else {
+                  return resultRight.id - resultLeft.id;
+                }
+              });
+              var searchResultList = '<ul class=\"search-result-list\">';
+              resultItems.forEach(function (result) {
+                searchResultList += result.item;
+              })
+              searchResultList += "</ul>";
+              resultContent.innerHTML = searchResultList;
+            }
+          }
+
+          if ('auto' === 'auto') {
+            input.addEventListener('input', inputEventFunction);
+          } else {
+            $('.search-icon').click(inputEventFunction);
+            input.addEventListener('keypress', function (event) {
+              if (event.keyCode === 13) {
+                inputEventFunction();
+              }
+            });
+          }
+
+          // remove loading animation
+          $(".local-search-pop-overlay").remove();
+          $('body').css('overflow', '');
+
+          proceedsearch();
+        }
+      });
+    }
+
+    // handle and trigger popup window;
+    $('.popup-trigger').click(function(e) {
+      e.stopPropagation();
+      if (isfetched === false) {
+        searchFunc(path, 'local-search-input', 'local-search-result');
+      } else {
+        proceedsearch();
+      };
+    });
+
+    $('.popup-btn-close').click(onPopupClose);
+    $('.popup').click(function(e){
+      e.stopPropagation();
+    });
+    $(document).on('keyup', function (event) {
+      var shouldDismissSearchPopup = event.which === 27 &&
+        $('.search-popup').is(':visible');
+      if (shouldDismissSearchPopup) {
+        onPopupClose();
+      }
+    });
+  </script>
+
+
+
+
+
+  
+
+  
+  <script src="https://cdn1.lncld.net/static/js/av-core-mini-0.6.4.js"></script>
+  <script>AV.initialize("BVY1wsbMOInpuLTE6Xks1hEo-gzGzoHsz", "9t3lzissKkIRVwunmGW4bgkp");</script>
+  <script>
+    function showTime(Counter) {
+      var query = new AV.Query(Counter);
+      var entries = [];
+      var $visitors = $(".leancloud_visitors");
+
+      $visitors.each(function () {
+        entries.push( $(this).attr("id").trim() );
+      });
+
+      query.containedIn('url', entries);
+      query.find()
+        .done(function (results) {
+          var COUNT_CONTAINER_REF = '.leancloud-visitors-count';
+
+          if (results.length === 0) {
+            $visitors.find(COUNT_CONTAINER_REF).text(0);
+            return;
+          }
+
+          for (var i = 0; i < results.length; i++) {
+            var item = results[i];
+            var url = item.get('url');
+            var time = item.get('time');
+            var element = document.getElementById(url);
+
+            $(element).find(COUNT_CONTAINER_REF).text(time);
+          }
+          for(var i = 0; i < entries.length; i++) {
+            var url = entries[i];
+            var element = document.getElementById(url);
+            var countSpan = $(element).find(COUNT_CONTAINER_REF);
+            if( countSpan.text() == '') {
+              countSpan.text(0);
+            }
+          }
+        })
+        .fail(function (object, error) {
+          console.log("Error: " + error.code + " " + error.message);
+        });
+    }
+
+    function addCount(Counter) {
+      var $visitors = $(".leancloud_visitors");
+      var url = $visitors.attr('id').trim();
+      var title = $visitors.attr('data-flag-title').trim();
+      var query = new AV.Query(Counter);
+
+      query.equalTo("url", url);
+      query.find({
+        success: function(results) {
+          if (results.length > 0) {
+            var counter = results[0];
+            counter.fetchWhenSave(true);
+            counter.increment("time");
+            
+            counter.save(null, {
+              success: function(counter) {
+                
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(counter.get('time'));
+                
+              },
+              error: function(counter, error) {
+                console.log('Failed to save Visitor num, with error message: ' + error.message);
+              }
+            });
+          } else {
+            
+              var newcounter = new Counter();
+              /* Set ACL */
+              var acl = new AV.ACL();
+              acl.setPublicReadAccess(true);
+              acl.setPublicWriteAccess(true);
+              newcounter.setACL(acl);
+              /* End Set ACL */
+              newcounter.set("title", title);
+              newcounter.set("url", url);
+              newcounter.set("time", 1);
+              newcounter.save(null, {
+                success: function(newcounter) {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(newcounter.get('time'));
+                },
+                error: function(newcounter, error) {
+                  console.log('Failed to create');
+                }
+              });
+            
+          }
+        },
+        error: function(error) {
+          console.log('Error:' + error.code + " " + error.message);
+        }
+      });
+    }
+
+    $(function() {
+      var Counter = AV.Object.extend("Counter");
+      if ($('.leancloud_visitors').length == 1) {
+        addCount(Counter);
+      } else if ($('.post-title-link').length > 1) {
+        showTime(Counter);
+      }
+    });
+  </script>
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+<script src="/live2dw/lib/L2Dwidget.min.js?094cbace49a39548bed64abff5988b05"></script><script>L2Dwidget.init({"pluginModelPath":"assets/","model":{"jsonPath":"/live2dw/assets/haru01.model.json"},"display":{"position":"right","width":150,"height":300},"mobile":{"show":false},"log":false,"pluginJsPath":"lib/","pluginRootPath":"live2dw/","tagMode":false});</script></body>
+</html>

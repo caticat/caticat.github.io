@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.1.0" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32-next.png?v=6.1.0">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.1.0">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.1.0" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '',
+    scheme: 'Gemini',
+    version: '6.1.0',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="LRU(Least Recently Used)最近最少使用统计算法 当Redis使用的内存超出设置的可以最大使用内存后Redis会通过LRU的配置来回收内存Redis对象的lru是用1&lt;&lt;24 - 1长度的字节表示的可以连续标识194天的数据 Redis这里的LRU算法是近似算法不是完全精确地获取到最合理的答案而是按照采样结果查找到一个比较近似的结果这个结果可能不是最合理的但肯定不是">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis算法 LRU">
+<meta property="og:url" content="https://caticat.github.io/2018/05/22/redis-algorithmic-lru/index.html">
+<meta property="og:site_name" content="杂记">
+<meta property="og:description" content="LRU(Least Recently Used)最近最少使用统计算法 当Redis使用的内存超出设置的可以最大使用内存后Redis会通过LRU的配置来回收内存Redis对象的lru是用1&lt;&lt;24 - 1长度的字节表示的可以连续标识194天的数据 Redis这里的LRU算法是近似算法不是完全精确地获取到最合理的答案而是按照采样结果查找到一个比较近似的结果这个结果可能不是最合理的但肯定不是">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://caticat.github.io/2018/05/22/redis-algorithmic-lru/lru_describe.png">
+<meta property="article:published_time" content="2018-05-22T15:02:11.000Z">
+<meta property="article:modified_time" content="2020-11-13T04:01:07.411Z">
+<meta property="article:author" content="Pan">
+<meta property="article:tag" content="redis">
+<meta property="article:tag" content="algorithmic">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://caticat.github.io/2018/05/22/redis-algorithmic-lru/lru_describe.png">
+
+
+
+
+
+
+  <link rel="canonical" href="https://caticat.github.io/2018/05/22/redis-algorithmic-lru/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Redis算法 LRU | 杂记</title>
+  
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"> 
+
+<div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">杂记</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle">不乱</p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+          
+  <li class="menu-item menu-item-home">
+    <a href="/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />首页</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-tags">
+    <a href="/tags/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-tags"></i> <br />标签</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-categories">
+    <a href="/categories/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />分类</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-archives">
+    <a href="/archives/%20" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />归档</a>
+</li>
+
+      
+
+      
+        <li class="menu-item menu-item-search">
+          
+            <a href="javascript:;" class="popup-trigger">
+          
+            
+              <i class="menu-item-icon fa fa-search fa-fw"></i> <br />搜索</a>
+        </li>
+      
+    </ul>
+  
+
+  
+
+  
+    <div class="site-search">
+      
+  <div class="popup search-popup local-search-popup">
+  <div class="local-search-header clearfix">
+    <span class="search-icon">
+      <i class="fa fa-search"></i>
+    </span>
+    <span class="popup-btn-close">
+      <i class="fa fa-times-circle"></i>
+    </span>
+    <div class="local-search-input-wrapper">
+      <input autocomplete="off"
+             placeholder="搜索..." spellcheck="false"
+             type="text" id="local-search-input">
+    </div>
+  </div>
+  <div id="local-search-result"></div>
+</div>
+
+
+
+    </div>
+  
+</nav>
+
+
+  
+
+
+
+ </div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://caticat.github.io/2018/05/22/redis-algorithmic-lru/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/assets/images/avatar.png">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="杂记">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Redis算法 LRU</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2018-05-22T15:02:11+00:00">2018-05-22</time>
+            
+
+            
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/redis/" itemprop="url" rel="index"><span itemprop="name">redis</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+             <span id="/2018/05/22/redis-algorithmic-lru/" class="leancloud_visitors" data-flag-title="Redis算法 LRU">
+               <span class="post-meta-divider">|</span>
+               <span class="post-meta-item-icon">
+                 <i class="fa fa-eye"></i>
+               </span>
+               
+                 <span class="post-meta-item-text">阅读次数：</span>
+               
+                 <span class="leancloud-visitors-count"></span>
+             </span>
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>LRU(Least Recently Used)最近最少使用统计算法</p>
+<p>当Redis使用的内存超出设置的可以最大使用内存后<br>Redis会通过LRU的配置来回收内存<br>Redis对象的lru是用1&lt;&lt;24 - 1长度的字节表示的<br>可以连续标识194天的数据</p>
+<p>Redis这里的LRU算法是近似算法<br>不是完全精确地获取到最合理的答案<br>而是按照采样结果查找到一个比较近似的结果<br>这个结果可能不是最合理的<br>但肯定不是最坏的</p>
+<a id="more"></a>
+
+<h2 id="经典LRU算法"><a href="#经典LRU算法" class="headerlink" title="经典LRU算法"></a>经典LRU算法</h2><p>通过dict和linkedlist两个数据结构处理<br>dict记录实际数据<br>linkedlist记录元素的变动状态<br>最老的数据排在链表前面<br>当需要删除时<br>只需要按照链表顺序删除即可</p>
+<h2 id="LRU基本流程"><a href="#LRU基本流程" class="headerlink" title="LRU基本流程"></a>LRU基本流程</h2><img src="/2018/05/22/redis-algorithmic-lru/lru_describe.png" class="" title="lru describe">
+
+<h2 id="Redis中LRU处理步骤"><a href="#Redis中LRU处理步骤" class="headerlink" title="Redis中LRU处理步骤"></a>Redis中LRU处理步骤</h2><p>Redis的算法省去了链表的记录<br>而是每个对象记录了一个时间戳<br>通过不精确的采样获取到可删除的元素进行删除</p>
+<p><strong>这里是摘抄</strong><br><a target="_blank" rel="noopener" href="http://blog.chinaunix.net/uid-20708886-id-5753422.html">原文</a></p>
+<ol>
+<li>获取redis server当前已经使用的内存mem_reported。</li>
+<li>如果mem_reported &lt; server.maxmemory ,则返回ok。否则mem_used=mem_reported，进入步骤3。</li>
+<li>遍历该redis的所slaves，mem_used减去所有slave占用的ClientOutputBuffer。</li>
+<li>如果配置了AOF，mem_used减去AOF占用的空间。sdslen(server.aof_buf)+aofRewriteBufferSize()。</li>
+<li>如果mem_used &lt; server.maxmemory,返回ok。否则进入步骤6。</li>
+<li>如果内存策略配置为noeviction，返回错误。否则进入7。 </li>
+<li>如果是LRU策略,如果是VOLATILE的LRU，则每次从可失效的数据集中，每次随机采样maxmemory_samples(默认为5)个key,从中选取idletime最大的key进行淘汰。否则，如果是ALLKEYS_LRU则从全局数据中进行采样，每次随机采样maxmemory_samples(默认为5)个key，并从中选择idletime最大的key进行淘汰。</li>
+<li>如果释放内存之后，还是超过了server.maxmemory,则继续淘汰，只到释放后剩下的内存小于server.maxmemory为止。<br> 被动淘汰 – 每次访问相关的key，如果发现key过期，直接释放掉该key相关的内存:<br> 每次访问key，都会调用expireIfNeeded来判断key是否过期，如果过期，则释放掉，并返回null，否则返回key的值。</li>
+</ol>
+<h2 id="Redis中LRU配置"><a href="#Redis中LRU配置" class="headerlink" title="Redis中LRU配置"></a>Redis中LRU配置</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"># maxmemory &lt;bytes&gt; # 只有配置了最大使用内存,LRU才会生效,不限制内存就不需要回收了</span><br><span class="line"></span><br><span class="line"># MAXMEMORY POLICY: how Redis will select what to remove when maxmemory</span><br><span class="line"># is reached. You can select among five behaviors:</span><br><span class="line">#</span><br><span class="line"># volatile-lru -&gt; remove the key with an expire set using an LRU algorithm # 有过期时间的键按照LRU算法回收</span><br><span class="line"># allkeys-lru -&gt; remove any key according to the LRU algorithm # 所有键按照LRU算法回收</span><br><span class="line"># volatile-random -&gt; remove a random key with an expire set # 有过期时间的键随机回收</span><br><span class="line"># allkeys-random -&gt; remove a random key, any key # 所有键随机回收</span><br><span class="line"># volatile-ttl -&gt; remove the key with the nearest expire time (minor TTL) # 按照过期时间最近的顺序回收</span><br><span class="line"># noeviction -&gt; don&#39;t expire at all, just return an error on write operations # 不回收,所有写操作返回失败</span><br><span class="line">#</span><br><span class="line"># Note: with any of the above policies, Redis will return an error on write</span><br><span class="line">#       operations, when there are no suitable keys for eviction.</span><br><span class="line">#</span><br><span class="line">#       At the date of writing these commands are: set setnx setex append</span><br><span class="line">#       incr decr rpush lpush rpushx lpushx linsert lset rpoplpush sadd</span><br><span class="line">#       sinter sinterstore sunion sunionstore sdiff sdiffstore zadd zincrby</span><br><span class="line">#       zunionstore zinterstore hset hsetnx hmset hincrby incrby decrby</span><br><span class="line">#       getset mset msetnx exec sort</span><br><span class="line">#</span><br><span class="line"># The default is:</span><br><span class="line">#</span><br><span class="line"># maxmemory-policy noeviction # 默认LRU处理方式</span><br><span class="line"></span><br><span class="line"># LRU and minimal TTL algorithms are not precise algorithms but approximated</span><br><span class="line"># algorithms (in order to save memory), so you can tune it for speed or</span><br><span class="line"># accuracy. For default Redis will check five keys and pick the one that was</span><br><span class="line"># used less recently, you can change the sample size using the following</span><br><span class="line"># configuration directive.</span><br><span class="line">#</span><br><span class="line"># The default of 5 produces good enough results. 10 Approximates very closely</span><br><span class="line"># true LRU but costs a bit more CPU. 3 is very fast but not very accurate.</span><br><span class="line">#</span><br><span class="line"># maxmemory-samples 5 # 默认采样数量</span><br></pre></td></tr></table></figure>
+
+<h2 id="LRU标记代码"><a href="#LRU标记代码" class="headerlink" title="LRU标记代码"></a>LRU标记代码</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* The actual Redis Object */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> LRU_BITS 24</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> LRU_CLOCK_MAX ((1<span class="meta-string">&lt;&lt;LRU_BITS)-1) /* Max value of obj-&gt;lru */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> LRU_CLOCK_RESOLUTION 1000 <span class="comment">/* LRU clock resolution in ms */</span></span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">redisObject</span> &#123;</span></span><br><span class="line">    <span class="keyword">unsigned</span> type:<span class="number">4</span>;</span><br><span class="line">    <span class="keyword">unsigned</span> encoding:<span class="number">4</span>;</span><br><span class="line">    <span class="keyword">unsigned</span> lru:LRU_BITS; <span class="comment">/* lru time (relative to server.lruclock) */</span></span><br><span class="line">    <span class="keyword">int</span> refcount;</span><br><span class="line">    <span class="keyword">void</span> *ptr;</span><br><span class="line">&#125; robj;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 创建对象,所有对象robj都有lru值</span></span><br><span class="line"><span class="function">robj *<span class="title">createObject</span><span class="params">(<span class="keyword">int</span> type, <span class="keyword">void</span> *ptr)</span> </span>&#123;</span><br><span class="line">    robj *o = zmalloc(<span class="keyword">sizeof</span>(*o));</span><br><span class="line">    o-&gt;type = type;</span><br><span class="line">    o-&gt;encoding = OBJ_ENCODING_RAW;</span><br><span class="line">    o-&gt;ptr = ptr;</span><br><span class="line">    o-&gt;refcount = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Set the LRU to the current lruclock (minutes resolution). */</span></span><br><span class="line">    o-&gt;lru = LRU_CLOCK();</span><br><span class="line">    <span class="keyword">return</span> o;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// server.lruclock是在serverCron中更新的,当频率不足LRU_CLOCK_RESOLUTION时,直接使用server.lruclock而无需再次运算</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> LRU_CLOCK() ((1000/server.hz &lt;= LRU_CLOCK_RESOLUTION) ? server.lruclock : getLRUClock())</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">getLRUClock</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> (mstime()/LRU_CLOCK_RESOLUTION) &amp; LRU_CLOCK_MAX;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 查找键会更新对象的LRU</span></span><br><span class="line"><span class="comment">/* Low level key lookup API, not actually called directly from commands</span></span><br><span class="line"><span class="comment"> * implementations that should instead rely on lookupKeyRead(),</span></span><br><span class="line"><span class="comment"> * lookupKeyWrite() and lookupKeyReadWithFlags(). */</span></span><br><span class="line"><span class="function">robj *<span class="title">lookupKey</span><span class="params">(redisDb *db, robj *key, <span class="keyword">int</span> flags)</span> </span>&#123;</span><br><span class="line">    dictEntry *de = dictFind(db-&gt;dict,key-&gt;ptr);</span><br><span class="line">    <span class="keyword">if</span> (de) &#123;</span><br><span class="line">        robj *val = dictGetVal(de);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Update the access time for the ageing algorithm.</span></span><br><span class="line"><span class="comment">         * Don&#x27;t do it if we have a saving child, as this will trigger</span></span><br><span class="line"><span class="comment">         * a copy on write madness. */</span></span><br><span class="line">        <span class="keyword">if</span> (server.rdb_child_pid == <span class="number">-1</span> &amp;&amp;</span><br><span class="line">            server.aof_child_pid == <span class="number">-1</span> &amp;&amp;</span><br><span class="line">            !(flags &amp; LOOKUP_NOTOUCH))</span><br><span class="line">        &#123;</span><br><span class="line">            val-&gt;lru = LRU_CLOCK();</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> val;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="回收代码"><a href="#回收代码" class="headerlink" title="回收代码"></a>回收代码</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 内存回收函数</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">freeMemoryIfNeeded</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">size_t</span> mem_used, mem_tofree, mem_freed;</span><br><span class="line">    <span class="keyword">int</span> slaves = listLength(server.slaves);</span><br><span class="line">    <span class="keyword">mstime_t</span> latency, eviction_latency;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* When clients are paused the dataset should be static not just from the</span></span><br><span class="line"><span class="comment">     * POV of clients not being able to write, but also from the POV of</span></span><br><span class="line"><span class="comment">     * expires and evictions of keys not being performed. */</span></span><br><span class="line">    <span class="keyword">if</span> (clientsArePaused()) <span class="keyword">return</span> C_OK;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Remove the size of slaves output buffers and AOF buffer from the</span></span><br><span class="line"><span class="comment">     * count of used memory. */</span></span><br><span class="line">    mem_used = zmalloc_used_memory();</span><br><span class="line">    <span class="keyword">if</span> (slaves) &#123;</span><br><span class="line">        listIter li;</span><br><span class="line">        listNode *ln;</span><br><span class="line"></span><br><span class="line">        listRewind(server.slaves,&amp;li);</span><br><span class="line">        <span class="keyword">while</span>((ln = listNext(&amp;li))) &#123;</span><br><span class="line">            client *slave = listNodeValue(ln);</span><br><span class="line">            <span class="keyword">unsigned</span> <span class="keyword">long</span> obuf_bytes = getClientOutputBufferMemoryUsage(slave);</span><br><span class="line">            <span class="keyword">if</span> (obuf_bytes &gt; mem_used)</span><br><span class="line">                mem_used = <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">else</span></span><br><span class="line">                mem_used -= obuf_bytes;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (server.aof_state != AOF_OFF) &#123;</span><br><span class="line">        mem_used -= sdslen(server.aof_buf);</span><br><span class="line">        mem_used -= aofRewriteBufferSize();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Check if we are over the memory limit. */</span></span><br><span class="line">    <span class="keyword">if</span> (mem_used &lt;= server.maxmemory) <span class="keyword">return</span> C_OK;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (server.maxmemory_policy == MAXMEMORY_NO_EVICTION)</span><br><span class="line">        <span class="keyword">return</span> C_ERR; <span class="comment">/* We need to free memory, but policy forbids. */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Compute how much memory we need to free. */</span></span><br><span class="line">    mem_tofree = mem_used - server.maxmemory;</span><br><span class="line">    mem_freed = <span class="number">0</span>;</span><br><span class="line">    latencyStartMonitor(latency);</span><br><span class="line">    <span class="keyword">while</span> (mem_freed &lt; mem_tofree) &#123;</span><br><span class="line">        <span class="keyword">int</span> j, k, keys_freed = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; server.dbnum; j++) &#123;</span><br><span class="line">            <span class="keyword">long</span> bestval = <span class="number">0</span>; <span class="comment">/* just to prevent warning */</span></span><br><span class="line">            sds bestkey = <span class="literal">NULL</span>;</span><br><span class="line">            dictEntry *de;</span><br><span class="line">            redisDb *db = server.db+j;</span><br><span class="line">            dict *dict;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (server.maxmemory_policy == MAXMEMORY_ALLKEYS_LRU ||</span><br><span class="line">                server.maxmemory_policy == MAXMEMORY_ALLKEYS_RANDOM)</span><br><span class="line">            &#123;</span><br><span class="line">                dict = server.db[j].dict;</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                dict = server.db[j].expires;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">if</span> (dictSize(dict) == <span class="number">0</span>) <span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">            <span class="comment">/* volatile-random and allkeys-random policy */</span></span><br><span class="line">            <span class="keyword">if</span> (server.maxmemory_policy == MAXMEMORY_ALLKEYS_RANDOM ||</span><br><span class="line">                server.maxmemory_policy == MAXMEMORY_VOLATILE_RANDOM)</span><br><span class="line">            &#123;</span><br><span class="line">                de = dictGetRandomKey(dict);</span><br><span class="line">                bestkey = dictGetKey(de);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">/* volatile-lru and allkeys-lru policy */</span></span><br><span class="line">            <span class="keyword">else</span> <span class="keyword">if</span> (server.maxmemory_policy == MAXMEMORY_ALLKEYS_LRU ||</span><br><span class="line">                server.maxmemory_policy == MAXMEMORY_VOLATILE_LRU)</span><br><span class="line">            &#123;</span><br><span class="line">                struct evictionPoolEntry *pool = db-&gt;eviction_pool;</span><br><span class="line"></span><br><span class="line">                <span class="keyword">while</span>(bestkey == <span class="literal">NULL</span>) &#123;</span><br><span class="line">                    evictionPoolPopulate(dict, db-&gt;dict, db-&gt;eviction_pool);</span><br><span class="line">                    <span class="comment">/* Go backward from best to worst element to evict. */</span></span><br><span class="line">                    <span class="keyword">for</span> (k = MAXMEMORY_EVICTION_POOL_SIZE<span class="number">-1</span>; k &gt;= <span class="number">0</span>; k--) &#123;</span><br><span class="line">                        <span class="keyword">if</span> (pool[k].key == <span class="literal">NULL</span>) <span class="keyword">continue</span>;</span><br><span class="line">                        de = dictFind(dict,pool[k].key);</span><br><span class="line"></span><br><span class="line">                        <span class="comment">/* Remove the entry from the pool. */</span></span><br><span class="line">                        sdsfree(pool[k].key);</span><br><span class="line">                        <span class="comment">/* Shift all elements on its right to left. */</span></span><br><span class="line">                        memmove(pool+k,pool+k+<span class="number">1</span>,</span><br><span class="line">                            <span class="keyword">sizeof</span>(pool[<span class="number">0</span>])*(MAXMEMORY_EVICTION_POOL_SIZE-k<span class="number">-1</span>));</span><br><span class="line">                        <span class="comment">/* Clear the element on the right which is empty</span></span><br><span class="line"><span class="comment">                         * since we shifted one position to the left.  */</span></span><br><span class="line">                        pool[MAXMEMORY_EVICTION_POOL_SIZE<span class="number">-1</span>].key = <span class="literal">NULL</span>;</span><br><span class="line">                        pool[MAXMEMORY_EVICTION_POOL_SIZE<span class="number">-1</span>].idle = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">                        <span class="comment">/* If the key exists, is our pick. Otherwise it is</span></span><br><span class="line"><span class="comment">                         * a ghost and we need to try the next element. */</span></span><br><span class="line">                        <span class="keyword">if</span> (de) &#123;</span><br><span class="line">                            bestkey = dictGetKey(de);</span><br><span class="line">                            <span class="keyword">break</span>;</span><br><span class="line">                        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                            <span class="comment">/* Ghost... */</span></span><br><span class="line">                            <span class="keyword">continue</span>;</span><br><span class="line">                        &#125;</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">/* volatile-ttl */</span></span><br><span class="line">            <span class="keyword">else</span> <span class="keyword">if</span> (server.maxmemory_policy == MAXMEMORY_VOLATILE_TTL) &#123;</span><br><span class="line">                <span class="keyword">for</span> (k = <span class="number">0</span>; k &lt; server.maxmemory_samples; k++) &#123;</span><br><span class="line">                    sds thiskey;</span><br><span class="line">                    <span class="keyword">long</span> thisval;</span><br><span class="line"></span><br><span class="line">                    de = dictGetRandomKey(dict);</span><br><span class="line">                    thiskey = dictGetKey(de);</span><br><span class="line">                    thisval = (<span class="keyword">long</span>) dictGetVal(de);</span><br><span class="line"></span><br><span class="line">                    <span class="comment">/* Expire sooner (minor expire unix timestamp) is better</span></span><br><span class="line"><span class="comment">                     * candidate for deletion */</span></span><br><span class="line">                    <span class="keyword">if</span> (bestkey == <span class="literal">NULL</span> || thisval &lt; bestval) &#123;</span><br><span class="line">                        bestkey = thiskey;</span><br><span class="line">                        bestval = thisval;</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">/* Finally remove the selected key. */</span></span><br><span class="line">            <span class="keyword">if</span> (bestkey) &#123;</span><br><span class="line">                <span class="keyword">long</span> <span class="keyword">long</span> delta;</span><br><span class="line"></span><br><span class="line">                robj *keyobj = createStringObject(bestkey,sdslen(bestkey));</span><br><span class="line">                propagateExpire(db,keyobj);</span><br><span class="line">                <span class="comment">/* We compute the amount of memory freed by dbDelete() alone.</span></span><br><span class="line"><span class="comment">                 * It is possible that actually the memory needed to propagate</span></span><br><span class="line"><span class="comment">                 * the DEL in AOF and replication link is greater than the one</span></span><br><span class="line"><span class="comment">                 * we are freeing removing the key, but we can&#x27;t account for</span></span><br><span class="line"><span class="comment">                 * that otherwise we would never exit the loop.</span></span><br><span class="line"><span class="comment">                 *</span></span><br><span class="line"><span class="comment">                 * AOF and Output buffer memory will be freed eventually so</span></span><br><span class="line"><span class="comment">                 * we only care about memory used by the key space. */</span></span><br><span class="line">                delta = (<span class="keyword">long</span> <span class="keyword">long</span>) zmalloc_used_memory();</span><br><span class="line">                latencyStartMonitor(eviction_latency);</span><br><span class="line">                dbDelete(db,keyobj);</span><br><span class="line">                latencyEndMonitor(eviction_latency);</span><br><span class="line">                latencyAddSampleIfNeeded(<span class="string">&quot;eviction-del&quot;</span>,eviction_latency);</span><br><span class="line">                latencyRemoveNestedEvent(latency,eviction_latency);</span><br><span class="line">                delta -= (<span class="keyword">long</span> <span class="keyword">long</span>) zmalloc_used_memory();</span><br><span class="line">                mem_freed += delta;</span><br><span class="line">                server.stat_evictedkeys++;</span><br><span class="line">                notifyKeyspaceEvent(NOTIFY_EVICTED, <span class="string">&quot;evicted&quot;</span>,</span><br><span class="line">                    keyobj, db-&gt;id);</span><br><span class="line">                decrRefCount(keyobj);</span><br><span class="line">                keys_freed++;</span><br><span class="line"></span><br><span class="line">                <span class="comment">/* When the memory to free starts to be big enough, we may</span></span><br><span class="line"><span class="comment">                 * start spending so much time here that is impossible to</span></span><br><span class="line"><span class="comment">                 * deliver data to the slaves fast enough, so we force the</span></span><br><span class="line"><span class="comment">                 * transmission here inside the loop. */</span></span><br><span class="line">                <span class="keyword">if</span> (slaves) flushSlavesOutputBuffers();</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (!keys_freed) &#123;</span><br><span class="line">            latencyEndMonitor(latency);</span><br><span class="line">            latencyAddSampleIfNeeded(<span class="string">&quot;eviction-cycle&quot;</span>,latency);</span><br><span class="line">            <span class="keyword">return</span> C_ERR; <span class="comment">/* nothing to free... */</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    latencyEndMonitor(latency);</span><br><span class="line">    latencyAddSampleIfNeeded(<span class="string">&quot;eviction-cycle&quot;</span>,latency);</span><br><span class="line">    <span class="keyword">return</span> C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 筛选出可以回收的键</span></span><br><span class="line"><span class="comment">/* This is an helper function for freeMemoryIfNeeded(), it is used in order</span></span><br><span class="line"><span class="comment"> * to populate the evictionPool with a few entries every time we want to</span></span><br><span class="line"><span class="comment"> * expire a key. Keys with idle time smaller than one of the current</span></span><br><span class="line"><span class="comment"> * keys are added. Keys are always added if there are free entries.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * We insert keys on place in ascending order, so keys with the smaller</span></span><br><span class="line"><span class="comment"> * idle time are on the left, and keys with the higher idle time on the</span></span><br><span class="line"><span class="comment"> * right. */</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> EVICTION_SAMPLES_ARRAY_SIZE 16</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">evictionPoolPopulate</span><span class="params">(dict *sampledict, dict *keydict, struct evictionPoolEntry *pool)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> j, k, count;</span><br><span class="line">    dictEntry *_samples[EVICTION_SAMPLES_ARRAY_SIZE];</span><br><span class="line">    dictEntry **samples;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Try to use a static buffer: this function is a big hit...</span></span><br><span class="line"><span class="comment">     * Note: it was actually measured that this helps. */</span></span><br><span class="line">    <span class="keyword">if</span> (server.maxmemory_samples &lt;= EVICTION_SAMPLES_ARRAY_SIZE) &#123;</span><br><span class="line">        samples = _samples;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        samples = zmalloc(<span class="keyword">sizeof</span>(samples[<span class="number">0</span>])*server.maxmemory_samples);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    count = dictGetSomeKeys(sampledict,samples,server.maxmemory_samples);</span><br><span class="line">    <span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; count; j++) &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">long</span> idle;</span><br><span class="line">        sds key;</span><br><span class="line">        robj *o;</span><br><span class="line">        dictEntry *de;</span><br><span class="line"></span><br><span class="line">        de = samples[j];</span><br><span class="line">        key = dictGetKey(de);</span><br><span class="line">        <span class="comment">/* If the dictionary we are sampling from is not the main</span></span><br><span class="line"><span class="comment">         * dictionary (but the expires one) we need to lookup the key</span></span><br><span class="line"><span class="comment">         * again in the key dictionary to obtain the value object. */</span></span><br><span class="line">        <span class="keyword">if</span> (sampledict != keydict) de = dictFind(keydict, key);</span><br><span class="line">        o = dictGetVal(de);</span><br><span class="line">        idle = estimateObjectIdleTime(o);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Insert the element inside the pool.</span></span><br><span class="line"><span class="comment">         * First, find the first empty bucket or the first populated</span></span><br><span class="line"><span class="comment">         * bucket that has an idle time smaller than our idle time. */</span></span><br><span class="line">        k = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">while</span> (k &lt; MAXMEMORY_EVICTION_POOL_SIZE &amp;&amp;</span><br><span class="line">               pool[k].key &amp;&amp;</span><br><span class="line">               pool[k].idle &lt; idle) k++;</span><br><span class="line">        <span class="keyword">if</span> (k == <span class="number">0</span> &amp;&amp; pool[MAXMEMORY_EVICTION_POOL_SIZE<span class="number">-1</span>].key != <span class="literal">NULL</span>) &#123;</span><br><span class="line">            <span class="comment">/* Can&#x27;t insert if the element is &lt; the worst element we have</span></span><br><span class="line"><span class="comment">             * and there are no empty buckets. */</span></span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (k &lt; MAXMEMORY_EVICTION_POOL_SIZE &amp;&amp; pool[k].key == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            <span class="comment">/* Inserting into empty position. No setup needed before insert. */</span></span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">/* Inserting in the middle. Now k points to the first element</span></span><br><span class="line"><span class="comment">             * greater than the element to insert.  */</span></span><br><span class="line">            <span class="keyword">if</span> (pool[MAXMEMORY_EVICTION_POOL_SIZE<span class="number">-1</span>].key == <span class="literal">NULL</span>) &#123;</span><br><span class="line">                <span class="comment">/* Free space on the right? Insert at k shifting</span></span><br><span class="line"><span class="comment">                 * all the elements from k to end to the right. */</span></span><br><span class="line">                memmove(pool+k+<span class="number">1</span>,pool+k,</span><br><span class="line">                    <span class="keyword">sizeof</span>(pool[<span class="number">0</span>])*(MAXMEMORY_EVICTION_POOL_SIZE-k<span class="number">-1</span>));</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="comment">/* No free space on right? Insert at k-1 */</span></span><br><span class="line">                k--;</span><br><span class="line">                <span class="comment">/* Shift all elements on the left of k (included) to the</span></span><br><span class="line"><span class="comment">                 * left, so we discard the element with smaller idle time. */</span></span><br><span class="line">                sdsfree(pool[<span class="number">0</span>].key);</span><br><span class="line">                memmove(pool,pool+<span class="number">1</span>,<span class="keyword">sizeof</span>(pool[<span class="number">0</span>])*k);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        pool[k].key = sdsdup(key);</span><br><span class="line">        pool[k].idle = idle;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (samples != _samples) zfree(samples);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/redis/" rel="tag"># redis</a>
+          
+            <a href="/tags/algorithmic/" rel="tag"># algorithmic</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2018/05/21/redis-algorithmic-referencecount/" rel="next" title="Redis算法 引用计数">
+                <i class="fa fa-chevron-left"></i> Redis算法 引用计数
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2018/05/23/redis-algorithmic-hash/" rel="prev" title="Redis算法 HASH">
+                Redis算法 HASH <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+  
+    <div id="gitalk-container"></div>
+  
+
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <img class="site-author-image" itemprop="image"
+                src="/assets/images/avatar.png"
+                alt="" />
+            
+              <p class="site-author-name" itemprop="name"></p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/%20%7C%7C%20archive">
+                
+                    <span class="site-state-item-count">59</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">14</span>
+                    <span class="site-state-item-name">分类</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">29</span>
+                    <span class="site-state-item-name">标签</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+            <div class="links-of-author motion-element">
+              
+                <span class="links-of-author-item">
+                  <a href="https://github.com/caticat" target="_blank" title="GitHub"><i class="fa fa-fw fa-github"></i>GitHub</a>
+                  
+                </span>
+              
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%8F%E5%85%B8LRU%E7%AE%97%E6%B3%95"><span class="nav-number">1.</span> <span class="nav-text">经典LRU算法</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#LRU%E5%9F%BA%E6%9C%AC%E6%B5%81%E7%A8%8B"><span class="nav-number">2.</span> <span class="nav-text">LRU基本流程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Redis%E4%B8%ADLRU%E5%A4%84%E7%90%86%E6%AD%A5%E9%AA%A4"><span class="nav-number">3.</span> <span class="nav-text">Redis中LRU处理步骤</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Redis%E4%B8%ADLRU%E9%85%8D%E7%BD%AE"><span class="nav-number">4.</span> <span class="nav-text">Redis中LRU配置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#LRU%E6%A0%87%E8%AE%B0%E4%BB%A3%E7%A0%81"><span class="nav-number">5.</span> <span class="nav-text">LRU标记代码</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9E%E6%94%B6%E4%BB%A3%E7%A0%81"><span class="nav-number">6.</span> <span class="nav-text">回收代码</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2018 &mdash; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate"> 
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Pan</span>
+
+  
+
+  
+</div>
+
+
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/theme-next/hexo-theme-next">NexT.Gemini</a> v6.1.0</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="site-uv" title="总访客量">
+      <i class="fa fa-user"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="site-pv" title="总访问量">
+      <i class="fa fa-eye"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/three.min.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/three/canvas_lines.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.1.0"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=6.1.0"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=6.1.0"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.1.0"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.1.0"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.1.0"></script>
+
+
+
+  
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+    <script type="text/javascript">
+    var gitalk = new Gitalk({
+      clientID: 'e8443a1845703a67513c',
+      clientSecret: '0b0efab598ef8cc3657c3853b3c0189da301fb99',
+      repo: 'caticat.github.io',
+      owner: 'caticat',
+      admin: ['caticat'],
+      id: location.pathname,
+      distractionFreeMode: 'false'
+    })
+    gitalk.render('gitalk-container')           
+  </script>
+
+
+  
+
+  <script type="text/javascript">
+    // Popup Window;
+    var isfetched = false;
+    var isXml = true;
+    // Search DB path;
+    var search_path = "search.xml";
+    if (search_path.length === 0) {
+      search_path = "search.xml";
+    } else if (/json$/i.test(search_path)) {
+      isXml = false;
+    }
+    var path = "/" + search_path;
+    // monitor main search box;
+
+    var onPopupClose = function (e) {
+      $('.popup').hide();
+      $('#local-search-input').val('');
+      $('.search-result-list').remove();
+      $('#no-result').remove();
+      $(".local-search-pop-overlay").remove();
+      $('body').css('overflow', '');
+    }
+
+    function proceedsearch() {
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay"></div>')
+        .css('overflow', 'hidden');
+      $('.search-popup-overlay').click(onPopupClose);
+      $('.popup').toggle();
+      var $localSearchInput = $('#local-search-input');
+      $localSearchInput.attr("autocapitalize", "none");
+      $localSearchInput.attr("autocorrect", "off");
+      $localSearchInput.focus();
+    }
+
+    // search function;
+    var searchFunc = function(path, search_id, content_id) {
+      'use strict';
+
+      // start loading animation
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay">' +
+          '<div id="search-loading-icon">' +
+          '<i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>' +
+          '</div>' +
+          '</div>')
+        .css('overflow', 'hidden');
+      $("#search-loading-icon").css('margin', '20% auto 0 auto').css('text-align', 'center');
+
+      
+
+      $.ajax({
+        url: path,
+        dataType: isXml ? "xml" : "json",
+        async: true,
+        success: function(res) {
+          // get the contents from search data
+          isfetched = true;
+          $('.popup').detach().appendTo('.header-inner');
+          var datas = isXml ? $("entry", res).map(function() {
+            return {
+              title: $("title", this).text(),
+              content: $("content",this).text(),
+              url: $("url" , this).text()
+            };
+          }).get() : res;
+          var input = document.getElementById(search_id);
+          var resultContent = document.getElementById(content_id);
+          var inputEventFunction = function() {
+            var searchText = input.value.trim().toLowerCase();
+            var keywords = searchText.split(/[\s\-]+/);
+            if (keywords.length > 1) {
+              keywords.push(searchText);
+            }
+            var resultItems = [];
+            if (searchText.length > 0) {
+              // perform local searching
+              datas.forEach(function(data) {
+                var isMatch = false;
+                var hitCount = 0;
+                var searchTextCount = 0;
+                var title = data.title.trim();
+                var titleInLowerCase = title.toLowerCase();
+                var content = data.content.trim().replace(/<[^>]+>/g,"");
+                
+                var contentInLowerCase = content.toLowerCase();
+                var articleUrl = decodeURIComponent(data.url);
+                var indexOfTitle = [];
+                var indexOfContent = [];
+                // only match articles with not empty titles
+                if(title != '') {
+                  keywords.forEach(function(keyword) {
+                    function getIndexByWord(word, text, caseSensitive) {
+                      var wordLen = word.length;
+                      if (wordLen === 0) {
+                        return [];
+                      }
+                      var startPosition = 0, position = [], index = [];
+                      if (!caseSensitive) {
+                        text = text.toLowerCase();
+                        word = word.toLowerCase();
+                      }
+                      while ((position = text.indexOf(word, startPosition)) > -1) {
+                        index.push({position: position, word: word});
+                        startPosition = position + wordLen;
+                      }
+                      return index;
+                    }
+
+                    indexOfTitle = indexOfTitle.concat(getIndexByWord(keyword, titleInLowerCase, false));
+                    indexOfContent = indexOfContent.concat(getIndexByWord(keyword, contentInLowerCase, false));
+                  });
+                  if (indexOfTitle.length > 0 || indexOfContent.length > 0) {
+                    isMatch = true;
+                    hitCount = indexOfTitle.length + indexOfContent.length;
+                  }
+                }
+
+                // show search results
+
+                if (isMatch) {
+                  // sort index by position of keyword
+
+                  [indexOfTitle, indexOfContent].forEach(function (index) {
+                    index.sort(function (itemLeft, itemRight) {
+                      if (itemRight.position !== itemLeft.position) {
+                        return itemRight.position - itemLeft.position;
+                      } else {
+                        return itemLeft.word.length - itemRight.word.length;
+                      }
+                    });
+                  });
+
+                  // merge hits into slices
+
+                  function mergeIntoSlice(text, start, end, index) {
+                    var item = index[index.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    var hits = [];
+                    var searchTextCountInSlice = 0;
+                    while (position + word.length <= end && index.length != 0) {
+                      if (word === searchText) {
+                        searchTextCountInSlice++;
+                      }
+                      hits.push({position: position, length: word.length});
+                      var wordEnd = position + word.length;
+
+                      // move to next position of hit
+
+                      index.pop();
+                      while (index.length != 0) {
+                        item = index[index.length - 1];
+                        position = item.position;
+                        word = item.word;
+                        if (wordEnd > position) {
+                          index.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                    searchTextCount += searchTextCountInSlice;
+                    return {
+                      hits: hits,
+                      start: start,
+                      end: end,
+                      searchTextCount: searchTextCountInSlice
+                    };
+                  }
+
+                  var slicesOfTitle = [];
+                  if (indexOfTitle.length != 0) {
+                    slicesOfTitle.push(mergeIntoSlice(title, 0, title.length, indexOfTitle));
+                  }
+
+                  var slicesOfContent = [];
+                  while (indexOfContent.length != 0) {
+                    var item = indexOfContent[indexOfContent.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    // cut out 100 characters
+                    var start = position - 20;
+                    var end = position + 80;
+                    if(start < 0){
+                      start = 0;
+                    }
+                    if (end < position + word.length) {
+                      end = position + word.length;
+                    }
+                    if(end > content.length){
+                      end = content.length;
+                    }
+                    slicesOfContent.push(mergeIntoSlice(content, start, end, indexOfContent));
+                  }
+
+                  // sort slices in content by search text's count and hits' count
+
+                  slicesOfContent.sort(function (sliceLeft, sliceRight) {
+                    if (sliceLeft.searchTextCount !== sliceRight.searchTextCount) {
+                      return sliceRight.searchTextCount - sliceLeft.searchTextCount;
+                    } else if (sliceLeft.hits.length !== sliceRight.hits.length) {
+                      return sliceRight.hits.length - sliceLeft.hits.length;
+                    } else {
+                      return sliceLeft.start - sliceRight.start;
+                    }
+                  });
+
+                  // select top N slices in content
+
+                  var upperBound = parseInt('1');
+                  if (upperBound >= 0) {
+                    slicesOfContent = slicesOfContent.slice(0, upperBound);
+                  }
+
+                  // highlight title and content
+
+                  function highlightKeyword(text, slice) {
+                    var result = '';
+                    var prevEnd = slice.start;
+                    slice.hits.forEach(function (hit) {
+                      result += text.substring(prevEnd, hit.position);
+                      var end = hit.position + hit.length;
+                      result += '<b class="search-keyword">' + text.substring(hit.position, end) + '</b>';
+                      prevEnd = end;
+                    });
+                    result += text.substring(prevEnd, slice.end);
+                    return result;
+                  }
+
+                  var resultItem = '';
+
+                  if (slicesOfTitle.length != 0) {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + highlightKeyword(title, slicesOfTitle[0]) + "</a>";
+                  } else {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + title + "</a>";
+                  }
+
+                  slicesOfContent.forEach(function (slice) {
+                    resultItem += "<a href='" + articleUrl + "'>" +
+                      "<p class=\"search-result\">" + highlightKeyword(content, slice) +
+                      "...</p>" + "</a>";
+                  });
+
+                  resultItem += "</li>";
+                  resultItems.push({
+                    item: resultItem,
+                    searchTextCount: searchTextCount,
+                    hitCount: hitCount,
+                    id: resultItems.length
+                  });
+                }
+              })
+            };
+            if (keywords.length === 1 && keywords[0] === "") {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-search fa-5x" /></div>'
+            } else if (resultItems.length === 0) {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-frown-o fa-5x" /></div>'
+            } else {
+              resultItems.sort(function (resultLeft, resultRight) {
+                if (resultLeft.searchTextCount !== resultRight.searchTextCount) {
+                  return resultRight.searchTextCount - resultLeft.searchTextCount;
+                } else if (resultLeft.hitCount !== resultRight.hitCount) {
+                  return resultRight.hitCount - resultLeft.hitCount;
+                } else {
+                  return resultRight.id - resultLeft.id;
+                }
+              });
+              var searchResultList = '<ul class=\"search-result-list\">';
+              resultItems.forEach(function (result) {
+                searchResultList += result.item;
+              })
+              searchResultList += "</ul>";
+              resultContent.innerHTML = searchResultList;
+            }
+          }
+
+          if ('auto' === 'auto') {
+            input.addEventListener('input', inputEventFunction);
+          } else {
+            $('.search-icon').click(inputEventFunction);
+            input.addEventListener('keypress', function (event) {
+              if (event.keyCode === 13) {
+                inputEventFunction();
+              }
+            });
+          }
+
+          // remove loading animation
+          $(".local-search-pop-overlay").remove();
+          $('body').css('overflow', '');
+
+          proceedsearch();
+        }
+      });
+    }
+
+    // handle and trigger popup window;
+    $('.popup-trigger').click(function(e) {
+      e.stopPropagation();
+      if (isfetched === false) {
+        searchFunc(path, 'local-search-input', 'local-search-result');
+      } else {
+        proceedsearch();
+      };
+    });
+
+    $('.popup-btn-close').click(onPopupClose);
+    $('.popup').click(function(e){
+      e.stopPropagation();
+    });
+    $(document).on('keyup', function (event) {
+      var shouldDismissSearchPopup = event.which === 27 &&
+        $('.search-popup').is(':visible');
+      if (shouldDismissSearchPopup) {
+        onPopupClose();
+      }
+    });
+  </script>
+
+
+
+
+
+  
+
+  
+  <script src="https://cdn1.lncld.net/static/js/av-core-mini-0.6.4.js"></script>
+  <script>AV.initialize("BVY1wsbMOInpuLTE6Xks1hEo-gzGzoHsz", "9t3lzissKkIRVwunmGW4bgkp");</script>
+  <script>
+    function showTime(Counter) {
+      var query = new AV.Query(Counter);
+      var entries = [];
+      var $visitors = $(".leancloud_visitors");
+
+      $visitors.each(function () {
+        entries.push( $(this).attr("id").trim() );
+      });
+
+      query.containedIn('url', entries);
+      query.find()
+        .done(function (results) {
+          var COUNT_CONTAINER_REF = '.leancloud-visitors-count';
+
+          if (results.length === 0) {
+            $visitors.find(COUNT_CONTAINER_REF).text(0);
+            return;
+          }
+
+          for (var i = 0; i < results.length; i++) {
+            var item = results[i];
+            var url = item.get('url');
+            var time = item.get('time');
+            var element = document.getElementById(url);
+
+            $(element).find(COUNT_CONTAINER_REF).text(time);
+          }
+          for(var i = 0; i < entries.length; i++) {
+            var url = entries[i];
+            var element = document.getElementById(url);
+            var countSpan = $(element).find(COUNT_CONTAINER_REF);
+            if( countSpan.text() == '') {
+              countSpan.text(0);
+            }
+          }
+        })
+        .fail(function (object, error) {
+          console.log("Error: " + error.code + " " + error.message);
+        });
+    }
+
+    function addCount(Counter) {
+      var $visitors = $(".leancloud_visitors");
+      var url = $visitors.attr('id').trim();
+      var title = $visitors.attr('data-flag-title').trim();
+      var query = new AV.Query(Counter);
+
+      query.equalTo("url", url);
+      query.find({
+        success: function(results) {
+          if (results.length > 0) {
+            var counter = results[0];
+            counter.fetchWhenSave(true);
+            counter.increment("time");
+            
+            counter.save(null, {
+              success: function(counter) {
+                
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(counter.get('time'));
+                
+              },
+              error: function(counter, error) {
+                console.log('Failed to save Visitor num, with error message: ' + error.message);
+              }
+            });
+          } else {
+            
+              var newcounter = new Counter();
+              /* Set ACL */
+              var acl = new AV.ACL();
+              acl.setPublicReadAccess(true);
+              acl.setPublicWriteAccess(true);
+              newcounter.setACL(acl);
+              /* End Set ACL */
+              newcounter.set("title", title);
+              newcounter.set("url", url);
+              newcounter.set("time", 1);
+              newcounter.save(null, {
+                success: function(newcounter) {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(newcounter.get('time'));
+                },
+                error: function(newcounter, error) {
+                  console.log('Failed to create');
+                }
+              });
+            
+          }
+        },
+        error: function(error) {
+          console.log('Error:' + error.code + " " + error.message);
+        }
+      });
+    }
+
+    $(function() {
+      var Counter = AV.Object.extend("Counter");
+      if ($('.leancloud_visitors').length == 1) {
+        addCount(Counter);
+      } else if ($('.post-title-link').length > 1) {
+        showTime(Counter);
+      }
+    });
+  </script>
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+<script src="/live2dw/lib/L2Dwidget.min.js?094cbace49a39548bed64abff5988b05"></script><script>L2Dwidget.init({"pluginModelPath":"assets/","model":{"jsonPath":"/live2dw/assets/haru01.model.json"},"display":{"position":"right","width":150,"height":300},"mobile":{"show":false},"log":false,"pluginJsPath":"lib/","pluginRootPath":"live2dw/","tagMode":false});</script></body>
+</html>
