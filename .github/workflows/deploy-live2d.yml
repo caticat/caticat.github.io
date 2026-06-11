@@ -1,4 +1,5 @@
 # Source: https://github.com/caticat/live2d-companion-page
+# Sync trigger: source b389308
 name: Deploy Live2D companion page
 
 on:
