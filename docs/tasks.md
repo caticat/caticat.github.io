@@ -26,9 +26,7 @@ Status values:
 - [x] Render Markdown with a vendored parser instead of opening raw `.md` files.
 - [x] Point the homepage Notes link to the local viewer.
 - [x] Keep Markdown files under `docs/` as the content source.
-- [-] Verify Notes locally through Docker and on GitHub Pages.
-  - Local Docker verification is complete.
-  - GitHub Pages verification is pending deployment.
+- [x] Verify Notes locally through Docker and on GitHub Pages.
 
 ## Phase 3: Site basics
 
@@ -50,9 +48,10 @@ Status values:
 
 - [x] Define a provider interface shared by random and AI dialogue providers.
 - [x] Keep the random provider as the offline fallback.
+- [x] Cancel stale provider requests when a newer interaction starts.
 - [ ] Decide on a serverless or backend proxy before using an API key.
 - [ ] Do not expose AI provider secrets in browser code.
-- [ ] Add timeout, cancellation, rate-limit, and failure fallback behavior.
+- [ ] Add timeout, rate-limit, and failure fallback behavior with the real AI provider.
 
 ## Release checklist
 
@@ -62,5 +61,5 @@ Status values:
   - Model loading and dialogue are verified.
   - Motion regression remains part of final manual review.
 - [x] Confirm Notes renders without downloading files.
-- [ ] Confirm `https://caticat.github.io/` serves the latest source commit.
-- [ ] Update architecture documentation when responsibilities change.
+- [x] Confirm `https://caticat.github.io/` serves the latest source commit.
+- [x] Update architecture documentation when responsibilities change.
