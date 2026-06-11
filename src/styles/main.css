@@ -148,6 +148,19 @@ h1 {
   text-underline-offset: 3px;
 }
 
+.error-page {
+  width: min(760px, calc(100% - 40px));
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.error-page h1 {
+  max-width: none;
+}
+
 @media (max-width: 780px) {
   .page-shell {
     min-height: auto;

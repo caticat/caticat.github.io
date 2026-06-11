@@ -33,6 +33,8 @@ This project is a static personal homepage. It runs behind an Nginx container ex
   docker-compose.yml
   nginx.conf
   index.html
+  notes.html
+  404.html
   docs/
     architecture.md
     tasks.md
@@ -66,6 +68,10 @@ This project is a static personal homepage. It runs behind an Nginx container ex
 
 `index.html` is the only HTML entry point. It declares the page shell, canvas, dialogue bubble, footer, stylesheet, and module script.
 
+`notes.html` is the Markdown viewer entry point. It loads a whitelisted document from `docs/` and renders it with the local `marked` runtime.
+
+`404.html` is the static not-found page used by Nginx and GitHub Pages.
+
 `docs/` stores project documentation. `architecture.md` describes how the project is organized, and `tasks.md` tracks implementation tasks.
 
 `public/assets/live2d/` stores Live2D model assets. These are character-specific files such as `model3.json`, `.moc3`, textures, motions, physics, and model readme files.
@@ -76,11 +82,15 @@ This project is a static personal homepage. It runs behind an Nginx container ex
 - `live2dcubismcore.min.js`: official Live2D Cubism Core runtime.
 - `cubism4.min.js`: `pixi-live2d-display` Cubism4 bundle that connects PixiJS and Cubism Core.
 
+`public/vendor/markdown/` stores the vendored `marked` parser used by the Notes page.
+
 `src/config/` keeps replaceable project settings. Site copy, model selection, model placement, motion names, attribution, and dialogue text live here instead of being hard-coded in feature code.
 
 `src/features/live2d/` owns model rendering. `Live2DStage.js` loads the runtime scripts, creates the Pixi application, loads the active model, sizes it, and wires tap events.
 
 `src/features/assistant/` owns dialogue behavior. The current provider returns random configured messages, and future AI providers should fit behind the same interface.
+
+`src/features/notes/` owns Markdown loading and rendering. Documents must be listed in `notes.config.js`; arbitrary paths from the URL are not fetched.
 
 `src/styles/main.css` contains the page layout and visual styling.
 
@@ -119,10 +129,14 @@ The page should not need changes outside configuration unless the new model requ
 
 The current assistant layer is deliberately small:
 
-- `randomDialogueProvider.js` returns random configured messages.
-- The page calls `reply({ trigger })` without knowing how the reply is produced.
+- `assistantProvider.js` selects the configured provider.
+- `randomDialogueProvider.js` asynchronously returns random configured messages.
+- The page calls `reply({ trigger, signal })` without knowing how the reply is produced.
 
 This keeps the later AI integration path simple. A future AI provider can implement the same `reply` shape while adding API calls, streaming, caching, or backend proxying.
+
+Idle dialogue timing, visible duration, and provider selection remain in
+`assistant.config.js`. Idle timers are paused while the page is hidden.
 
 ## Backend Decision
 
@@ -145,14 +159,20 @@ The two repositories have separate responsibilities:
 - `caticat/caticat.github.io`: GitHub Pages deployment controller.
 
 The Pages workflow checks out the source repository and publishes only
-`index.html`, `src/`, `public/`, and `docs/`. Docker and Nginx files are not part
-of the GitHub Pages artifact.
+`index.html`, `notes.html`, `404.html`, `src/`, `public/`, and `docs/`. Docker
+and Nginx files are not part of the GitHub Pages output.
 
 The deployment workflow can be started manually, by a repository dispatch
 event, or by its hourly schedule. The source repository includes an optional
 dispatch workflow that uses the `PAGES_DEPLOY_TOKEN` secret for immediate
 deployment after a push. Without that secret, the scheduled deployment remains
 the fallback.
+
+The legacy Hexo project remains on the `source` branch of
+`caticat/caticat.github.io` as an archive. Its old configuration contains
+legacy third-party service credentials in repository history. Those credentials
+must be rotated or revoked before the branch is reused, shared, or permanently
+archived.
 
 ## Asset Policy
 

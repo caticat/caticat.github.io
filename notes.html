@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Notes for the Live2D companion page." />
+    <title>Notes | Pan's Mainpage</title>
+    <link rel="icon" href="/public/assets/site/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./src/styles/notes.css?v=20260611" />
+  </head>
+  <body>
+    <header class="notes-header">
+      <a class="back-link" href="/">Back to mainpage</a>
+      <nav id="notes-navigation" class="notes-navigation" aria-label="Notes"></nav>
+    </header>
+
+    <main class="notes-shell">
+      <article id="notes-content" class="markdown-body" aria-live="polite">
+        <p>Loading notes...</p>
+      </article>
+    </main>
+
+    <script src="./public/vendor/markdown/marked.umd.js?v=18.0.5"></script>
+    <script type="module" src="./src/features/notes/notesPage.js?v=20260611"></script>
+  </body>
+</html>

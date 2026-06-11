@@ -34,6 +34,8 @@ repository contains the GitHub Pages workflow and publishes these directories:
 
 ```text
 index.html
+notes.html
+404.html
 src/
 public/
 docs/

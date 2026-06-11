@@ -1,5 +1,13 @@
 export const assistantConfig = {
+  provider: {
+    type: "random",
+  },
   initialDelayMs: 1200,
+  visibleDurationMs: 5200,
+  idleIntervalMs: {
+    min: 18000,
+    max: 32000,
+  },
   fallbackMessage: "我在这里。",
   dialogues: {
     load: [

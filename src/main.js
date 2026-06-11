@@ -1,34 +1,89 @@
 import { siteConfig } from "./config/site.config.js";
 import { live2dConfig } from "./config/live2d.config.js";
 import { assistantConfig } from "./config/assistant.config.js";
-import { createRandomDialogueProvider } from "./features/assistant/providers/randomDialogueProvider.js";
+import { createAssistantProvider } from "./features/assistant/assistantProvider.js";
 import { mountLive2DStage } from "./features/live2d/Live2DStage.js";
 
 const activeModel = live2dConfig.models[live2dConfig.activeModelId];
-const dialogueProvider = createRandomDialogueProvider(assistantConfig);
+const assistantProvider = createAssistantProvider(assistantConfig);
 
 document.title = siteConfig.title;
 document.querySelector("#site-title").textContent = siteConfig.title;
 document.querySelector("#site-subtitle").textContent = siteConfig.subtitle;
 document.querySelector("#site-links").innerHTML = siteConfig.links
-  .map((link) => `<a href="${link.href}" target="_blank" rel="noreferrer">${link.label}</a>`)
+  .map((link) => {
+    const externalAttributes = link.external
+      ? ' target="_blank" rel="noreferrer"'
+      : "";
+    return `<a href="${link.href}"${externalAttributes}>${link.label}</a>`;
+  })
   .join("");
 
 const bubble = document.querySelector("#assistant-bubble");
 const status = document.querySelector("#live2d-status");
+let hideDialogueTimer;
+let idleDialogueTimer;
+let dialogueRequest;
 
-function showDialogue(trigger) {
-  bubble.textContent = dialogueProvider.reply({ trigger });
+async function showDialogue(trigger) {
+  dialogueRequest?.abort();
+  dialogueRequest = new AbortController();
+
+  let message;
+  try {
+    message = await assistantProvider.reply({
+      trigger,
+      signal: dialogueRequest.signal,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      return;
+    }
+    console.error(error);
+    message = assistantConfig.fallbackMessage;
+  }
+
+  window.clearTimeout(hideDialogueTimer);
+  bubble.textContent = message;
   bubble.classList.add("is-visible");
+  hideDialogueTimer = window.setTimeout(() => {
+    bubble.classList.remove("is-visible");
+  }, assistantConfig.visibleDurationMs);
 }
 
-showDialogue("load");
+function scheduleIdleDialogue() {
+  window.clearTimeout(idleDialogueTimer);
+
+  const { min, max } = assistantConfig.idleIntervalMs;
+  const delay = Math.round(min + Math.random() * (max - min));
+  idleDialogueTimer = window.setTimeout(() => {
+    if (!document.hidden) {
+      void showDialogue("idle");
+    }
+    scheduleIdleDialogue();
+  }, delay);
+}
+
+window.setTimeout(() => void showDialogue("load"), assistantConfig.initialDelayMs);
+scheduleIdleDialogue();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    window.clearTimeout(idleDialogueTimer);
+    return;
+  }
+
+  scheduleIdleDialogue();
+});
 
 mountLive2DStage({
   canvas: document.querySelector("#live2d-canvas"),
   status,
   model: activeModel,
-  onTap: () => showDialogue("tap"),
+  onTap: () => {
+    void showDialogue("tap");
+    scheduleIdleDialogue();
+  },
 });
 
 document.querySelector("#site-footer").innerHTML = `

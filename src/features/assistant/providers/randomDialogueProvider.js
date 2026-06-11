@@ -1,6 +1,7 @@
 export function createRandomDialogueProvider(config) {
   return {
-    reply({ trigger }) {
+    async reply({ trigger, signal }) {
+      signal?.throwIfAborted();
       const messages = config.dialogues[trigger] ?? config.dialogues.idle ?? [];
       if (messages.length === 0) {
         return config.fallbackMessage;
