@@ -44,7 +44,7 @@ jobs:
             ! -name .git \
             ! -name .github \
             -exec rm -rf {} +
-          cp source/index.html target/
+          cp source/index.html source/notes.html source/404.html target/
           cp source/README.md target/
           cp -R source/src source/public source/docs target/
           touch target/.nojekyll
