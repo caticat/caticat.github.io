@@ -12,5 +12,10 @@ export const siteConfig = {
       href: "/notes.html?doc=architecture",
       external: false,
     },
+    {
+      label: "Go 设计模式图解",
+      href: "/design-pattern/",
+      external: false,
+    },
   ],
 };
